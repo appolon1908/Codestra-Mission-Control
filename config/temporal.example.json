@@ -1,0 +1,7 @@
+{
+  "address": "100.76.208.87:7233",
+  "namespace": "codestra-mission-control",
+  "task_queue": "codestra-mission-control",
+  "poll_seconds": 30,
+  "network_policy": "tailscale-private-only"
+}

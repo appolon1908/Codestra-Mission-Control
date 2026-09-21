@@ -1,5 +1,5 @@
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from mission_control.controller import ControllerAction, MissionController
 from mission_control.lease import LeaseManager
@@ -23,7 +23,7 @@ def test_expired_writer_is_reassigned(tmp_path):
     with store.connection() as conn:
         conn.execute(
             "UPDATE leases SET expires_at=? WHERE mission_id=?",
-            ((datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(), "PAS-4"),
+            ((datetime.now(UTC) - timedelta(seconds=1)).isoformat(), "PAS-4"),
         )
     decision = MissionController(store).evaluate("PAS-4")
     assert decision.action == ControllerAction.REASSIGN

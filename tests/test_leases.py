@@ -1,7 +1,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -29,7 +29,7 @@ def test_expired_lease_can_be_taken_over(tmp_path):
     store = make_store(tmp_path)
     leases = LeaseManager(store)
     leases.claim("PAS-TEST", "codex-01", ttl_seconds=600)
-    expired = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    expired = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
     with store.connection() as conn:
         conn.execute(
             "UPDATE leases SET expires_at=? WHERE mission_id=?",

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC
 from enum import StrEnum
 
 from .lease import LeaseManager
@@ -43,9 +44,9 @@ class MissionController:
             return ControllerDecision(ControllerAction.REVIEW, "external review/certification required")
 
         if lease:
-            from datetime import datetime, timezone
+            from datetime import datetime
 
-            if datetime.fromisoformat(lease["expires_at"]) <= datetime.now(timezone.utc):
+            if datetime.fromisoformat(lease["expires_at"]) <= datetime.now(UTC):
                 return ControllerDecision(
                     ControllerAction.REASSIGN,
                     f"writer lease expired for {lease['agent_id']}",
