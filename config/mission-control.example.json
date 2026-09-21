@@ -1,0 +1,19 @@
+{
+  "database": ".runtime/mission-control.db",
+  "lease_ttl_seconds": 600,
+  "heartbeat_seconds": 120,
+  "max_parallel_writers": 3,
+  "approval_policy": {
+    "read": 0,
+    "local_write": 1,
+    "branch_push": 2,
+    "merge": 3,
+    "staging_mutation": 4,
+    "production_effect": 5
+  },
+  "sources": {
+    "linear": "live execution authority",
+    "github": "code/review authority",
+    "notion": "architecture/continuity authority"
+  }
+}

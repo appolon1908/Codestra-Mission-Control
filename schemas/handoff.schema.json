@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codestra Agent Handoff",
+  "type": "object",
+  "required": [
+    "mission_id",
+    "agent_id",
+    "repository",
+    "branch",
+    "head_sha",
+    "state",
+    "tests",
+    "blockers",
+    "request_next_task"
+  ],
+  "properties": {
+    "mission_id": {
+      "type": "string"
+    },
+    "agent_id": {
+      "type": "string"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "head_sha": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "request_next_task": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

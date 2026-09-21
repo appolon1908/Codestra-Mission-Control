@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codestra-mission-control"
+version = "0.1.0"
+description = "Durable mission, lease, handoff, approval and agent orchestration control plane"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+temporal = ["temporalio>=1.8,<2"]
+dev = ["pytest>=8,<10", "ruff>=0.8,<1"]
+
+[project.scripts]
+codestra-mission-control = "mission_control.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
