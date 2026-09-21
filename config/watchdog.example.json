@@ -1,0 +1,17 @@
+{
+  "max_parallel_writers": 3,
+  "lease_ttl_seconds": 600,
+  "heartbeat_target_seconds": 120,
+  "watchdog_interval_seconds": 30,
+  "workers": [
+    {"agent_id": "codex-01", "provider": "codex"},
+    {"agent_id": "claude-01", "provider": "claude"},
+    {"agent_id": "codex-02", "provider": "codex"}
+  ],
+  "rules": {
+    "schedule_statuses": ["READY", "QUEUED"],
+    "blocked_statuses": ["BLOCKED", "NEEDS_DECISION"],
+    "dirty_expired_worktree": "NEEDS_DECISION",
+    "max_parallel_writers": 3
+  }
+}

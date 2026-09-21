@@ -234,6 +234,90 @@ class MissionStore:
                 )
             )
 
+    def list_missions(self) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM missions ORDER BY updated_at, mission_id"
+                )
+            )
+
+    def get_repository(self, repository: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM repositories WHERE repository=?",
+                (repository,),
+            ).fetchone()
+
+    def update_mission_workspace(
+        self,
+        mission_id: str,
+        *,
+        branch: str,
+        worktree: str,
+        base_sha: str,
+        head_sha: str,
+    ) -> None:
+        with self.connection() as conn:
+            changed = conn.execute(
+                """
+                UPDATE missions
+                SET branch=?, worktree=?, base_sha=?, head_sha=?, updated_at=?
+                WHERE mission_id=?
+                """,
+                (branch, worktree, base_sha, head_sha, _iso_now(), mission_id),
+            ).rowcount
+            if not changed:
+                raise KeyError(mission_id)
+
+    def list_agent_executions(
+        self,
+        *,
+        states: tuple[str, ...] | None = None,
+    ) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            if not states:
+                return list(
+                    conn.execute(
+                        "SELECT * FROM agent_executions ORDER BY started_at"
+                    )
+                )
+            placeholders = ",".join("?" for _ in states)
+            return list(
+                conn.execute(
+                    f"""
+                    SELECT * FROM agent_executions
+                    WHERE state IN ({placeholders})
+                    ORDER BY started_at
+                    """,
+                    states,
+                )
+            )
+
+    def latest_agent_execution(self, mission_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM agent_executions
+                WHERE mission_id=?
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (mission_id,),
+            ).fetchone()
+
+    def latest_checkpoint(self, mission_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM checkpoints
+                WHERE mission_id=?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (mission_id,),
+            ).fetchone()
+
     def get_mission(self, mission_id: str) -> sqlite3.Row | None:
         with self.connection() as conn:
             return conn.execute(
