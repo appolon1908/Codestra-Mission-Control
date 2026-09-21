@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "intent": "least-privilege Mission Control private network policy",
+  "tag_owners": {
+    "tag:mission-control": [
+      "autogroup:admin"
+    ],
+    "tag:agent-worker": [
+      "autogroup:admin"
+    ],
+    "tag:middleware": [
+      "autogroup:admin"
+    ],
+    "tag:telephony": [
+      "autogroup:admin"
+    ],
+    "tag:apps": [
+      "autogroup:admin"
+    ],
+    "tag:observability": [
+      "autogroup:admin"
+    ]
+  },
+  "grants": [
+    {
+      "src": [
+        "tag:agent-worker"
+      ],
+      "dst": [
+        "tag:mission-control"
+      ],
+      "ip": [
+        "tcp:7233",
+        "tcp:8233"
+      ],
+      "purpose": "Temporal worker/control access"
+    },
+    {
+      "src": [
+        "tag:mission-control"
+      ],
+      "dst": [
+        "tag:agent-worker"
+      ],
+      "ip": [
+        "tcp:22",
+        "tcp:443"
+      ],
+      "purpose": "worker dispatch/management"
+    },
+    {
+      "src": [
+        "tag:mission-control",
+        "tag:observability"
+      ],
+      "dst": [
+        "tag:middleware",
+        "tag:telephony",
+        "tag:apps",
+        "tag:observability"
+      ],
+      "ip": [
+        "tcp:9100",
+        "tcp:9115"
+      ],
+      "purpose": "private monitoring probes"
+    }
+  ],
+  "never_public": [
+    {
+      "port": 7233,
+      "service": "Temporal gRPC"
+    },
+    {
+      "port": 8233,
+      "service": "Temporal UI"
+    },
+    {
+      "port": 5432,
+      "service": "PostgreSQL"
+    },
+    {
+      "service": "Mission Control internal API"
+    },
+    {
+      "service": "agent control channels"
+    }
+  ],
+  "notes": [
+    "Caddy/Kong public edge remains for product APIs only.",
+    "Apply this desired-state plan through the Tailscale admin policy surface after review.",
+    "Production/provider-effect endpoints are not granted to agent-worker tags."
+  ]
+}

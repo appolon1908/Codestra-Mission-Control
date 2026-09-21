@@ -1,0 +1,22 @@
+{
+  "tailnet_transport": "MagicDNS/Tailscale",
+  "required_roles": [
+    "mission-control",
+    "workstation",
+    "agent-worker",
+    "middleware",
+    "telephony",
+    "apps",
+    "observability"
+  ],
+  "private_control_ports": [
+    7233,
+    8233
+  ],
+  "never_public": [
+    7233,
+    8233,
+    5432
+  ],
+  "notes": "Caddy/Kong stay public for product APIs; Mission Control and Temporal stay private."
+}

@@ -1,0 +1,75 @@
+{
+  "tailnet": "tail4a23a1.ts.net",
+  "transport": "Tailscale/MagicDNS",
+  "nodes": [
+    {
+      "hostname": "codestra-desktop-postman",
+      "dns": "codestra-desktop-postman.tail4a23a1.ts.net.",
+      "ipv4": "100.66.139.30",
+      "os": "windows",
+      "online": true,
+      "roles": [
+        "workstation",
+        "agent-worker"
+      ]
+    },
+    {
+      "hostname": "codestra-laptop-appolon",
+      "dns": "codestra-laptop-appolon.tail4a23a1.ts.net.",
+      "ipv4": "100.64.209.77",
+      "os": "windows",
+      "online": true,
+      "roles": [
+        "workstation",
+        "agent-worker"
+      ]
+    },
+    {
+      "hostname": "codestra-middleware-core",
+      "dns": "codestra-middleware-core.tail4a23a1.ts.net.",
+      "ipv4": "100.76.208.87",
+      "os": "linux",
+      "online": true,
+      "roles": [
+        "mission-control",
+        "middleware"
+      ]
+    },
+    {
+      "hostname": "codestra-vicidial",
+      "dns": "codestra-vicidial.tail4a23a1.ts.net.",
+      "ipv4": "100.68.154.51",
+      "os": "linux",
+      "online": true,
+      "roles": [
+        "telephony"
+      ]
+    },
+    {
+      "hostname": "codestra-breero-apps",
+      "dns": "codestra-breero-apps.tail4a23a1.ts.net.",
+      "ipv4": "100.92.10.23",
+      "os": "linux",
+      "online": true,
+      "roles": [
+        "apps"
+      ]
+    },
+    {
+      "hostname": "codestra-klyrow-obs",
+      "dns": "codestra-klyrow-obs.tail4a23a1.ts.net.",
+      "ipv4": "100.87.244.15",
+      "os": "linux",
+      "online": true,
+      "roles": [
+        "apps",
+        "observability"
+      ]
+    }
+  ],
+  "identity_checks": {
+    "desktop_laptop_distinct_dns": true,
+    "desktop_laptop_distinct_ipv4": true,
+    "all_six_online_from_server1": true
+  }
+}
