@@ -15,12 +15,32 @@ class ClaudeAdapter(ProcessAgentAdapter):
     SAFE_TOOLS = "Read,Edit,Write,Glob,Grep"
 
     def discover_executable(self) -> str:
-        candidates = []
+        candidates: list[Path] = []
         appdata = os.environ.get("APPDATA")
         if appdata:
-            candidates.append(Path(appdata) / "npm" / "claude.cmd")
-        candidates.append(Path(r"C:\Users\agent\AppData\Roaming\npm\claude.cmd"))
-        return self._which_or_candidates("claude", candidates)
+            npm = Path(appdata) / "npm"
+            package = npm / "node_modules" / "@anthropic-ai" / "claude-code"
+            candidates.extend(
+                [
+                    package / "bin" / "claude.exe",
+                    package
+                    / "node_modules"
+                    / "@anthropic-ai"
+                    / "claude-code-win32-x64"
+                    / "claude.exe",
+                    npm / "claude.cmd",
+                ]
+            )
+        candidates.extend(
+            [
+                Path(
+                    r"C:\Users\agent\AppData\Roaming\npm\node_modules"
+                    r"\@anthropic-ai\claude-code\bin\claude.exe"
+                ),
+                Path(r"C:\Users\agent\AppData\Roaming\npm\claude.cmd"),
+            ]
+        )
+        return self._which_or_candidates("claude.exe", candidates)
 
     def auth_status(self) -> dict[str, object]:
         proc = subprocess.run(

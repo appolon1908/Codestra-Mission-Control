@@ -13,12 +13,24 @@ class CodexAdapter(ProcessAgentAdapter):
     name = "codex"
 
     def discover_executable(self) -> str:
-        candidates = []
+        candidates: list[Path] = []
         appdata = os.environ.get("APPDATA")
         if appdata:
-            candidates.append(Path(appdata) / "npm" / "codex.cmd")
-        candidates.append(Path(r"C:\Users\agent\AppData\Roaming\npm\codex.cmd"))
-        return self._which_or_candidates("codex", candidates)
+            npm = Path(appdata) / "npm"
+            package = npm / "node_modules" / "@openai" / "codex"
+            candidates.extend(sorted(package.glob("**/bin/codex.exe")))
+            candidates.append(npm / "codex.cmd")
+        candidates.extend(
+            [
+                Path(
+                    r"C:\Users\agent\AppData\Roaming\npm\node_modules\@openai"
+                    r"\codex\node_modules\@openai\codex-win32-x64\vendor"
+                    r"\x86_64-pc-windows-msvc\bin\codex.exe"
+                ),
+                Path(r"C:\Users\agent\AppData\Roaming\npm\codex.cmd"),
+            ]
+        )
+        return self._which_or_candidates("codex.exe", candidates)
 
     def auth_status(self) -> dict[str, object]:
         proc = subprocess.run(
