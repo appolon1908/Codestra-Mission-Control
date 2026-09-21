@@ -132,7 +132,7 @@ class CheckpointFanout:
         for adapter in self.adapters:
             try:
                 observations.append(adapter.publish_checkpoint(checkpoint))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 observations.append(
                     SurfaceObservation(
                         surface=adapter.surface,

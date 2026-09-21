@@ -213,7 +213,7 @@ class MissionScheduler:
                 execution.execution_id,
                 takeover=lease.takeover,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             current = self.leases.current(mission["mission_id"])
             if current and current["agent_id"] == worker.agent_id:
                 next_status = (

@@ -5,9 +5,10 @@ import os
 import shutil
 import subprocess
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .control_sync import (
     CheckpointEnvelope,
@@ -15,7 +16,6 @@ from .control_sync import (
     Surface,
     SurfaceObservation,
 )
-
 
 JsonRequester = Callable[[str, str, dict[str, str], dict[str, Any] | None], dict[str, Any]]
 
@@ -91,7 +91,7 @@ class LocalCheckpointAdapter(ControlSurfaceAdapter):
         try:
             head = self._git("rev-parse", "HEAD")
             return SurfaceObservation(Surface.LOCAL, True, "OK", head)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
                 Surface.LOCAL,
                 False,
@@ -156,7 +156,7 @@ class GitHubCheckpointAdapter(ControlSurfaceAdapter):
             head = ((payload.get("head") or {}).get("sha"))
             state = str(payload.get("state") or "UNKNOWN").upper()
             return SurfaceObservation(Surface.GITHUB, True, state, head)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
                 Surface.GITHUB,
                 False,
@@ -179,7 +179,7 @@ class GitHubCheckpointAdapter(ControlSurfaceAdapter):
                 {"body": _checkpoint_text(checkpoint)},
             )
             return state
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
                 Surface.GITHUB,
                 False,
@@ -226,7 +226,7 @@ class LinearCheckpointAdapter(ControlSurfaceAdapter):
             issue = ((payload.get("data") or {}).get("issue") or {})
             state = ((issue.get("state") or {}).get("name") or "UNKNOWN")
             return SurfaceObservation(Surface.LINEAR, True, state)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
                 Surface.LINEAR,
                 False,
@@ -255,7 +255,7 @@ class LinearCheckpointAdapter(ControlSurfaceAdapter):
                 body,
             )
             success = bool(
-                (((payload.get("data") or {}).get("commentCreate") or {}).get("success"))
+                ((payload.get("data") or {}).get("commentCreate") or {}).get("success")
             )
             if not success:
                 return SurfaceObservation(Surface.LINEAR, False, "ERROR", checkpoint.head_sha)
@@ -265,7 +265,7 @@ class LinearCheckpointAdapter(ControlSurfaceAdapter):
                 checkpoint.status,
                 checkpoint.head_sha,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
                 Surface.LINEAR,
                 False,
@@ -307,7 +307,7 @@ class NotionCheckpointAdapter(ControlSurfaceAdapter):
                 None,
             )
             return SurfaceObservation(Surface.NOTION, True, "AVAILABLE")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
                 Surface.NOTION,
                 False,
@@ -345,7 +345,7 @@ class NotionCheckpointAdapter(ControlSurfaceAdapter):
                 checkpoint.status,
                 checkpoint.head_sha,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
                 Surface.NOTION,
                 False,
