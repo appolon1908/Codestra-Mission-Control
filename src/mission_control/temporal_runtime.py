@@ -5,7 +5,6 @@ import asyncio
 import json
 import os
 from dataclasses import dataclass
-from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -13,17 +12,15 @@ from .controller import MissionController
 from .store import MissionStore
 
 try:
-    from temporalio import activity, workflow
+    from temporalio import activity
     from temporalio.client import Client
-    from temporalio.common import RetryPolicy
     from temporalio.worker import Worker
 except ImportError:  # pragma: no cover - optional dependency
     activity = None
-    workflow = None
     Client = None
-    RetryPolicy = None
     Worker = None
 
+from .temporal_workflow import MissionWorkflow
 
 DEFAULT_TASK_QUEUE = "codestra-mission-control"
 DEFAULT_NAMESPACE = "codestra-mission-control"
@@ -135,108 +132,8 @@ if activity is not None:
     )(MissionActivities.workflow_signal)
 
 
-if workflow is not None:
-
-    @workflow.defn(name="CodestraMissionWorkflow")
-    class MissionWorkflow:
-        def __init__(self) -> None:
-            self._wake = False
-            self._stop = False
-            self._last_signal: dict[str, Any] | None = None
-            self._last_decision: dict[str, str] | None = None
-            self._iteration = 0
-
-        @workflow.signal(name="checkpoint")
-        async def checkpoint(self, payload: dict[str, Any]) -> None:
-            self._last_signal = dict(payload)
-            self._wake = True
-
-        @workflow.signal(name="approval")
-        async def approval(self, payload: dict[str, Any]) -> None:
-            self._last_signal = dict(payload)
-            self._wake = True
-
-        @workflow.signal(name="stop")
-        async def stop(self) -> None:
-            self._stop = True
-            self._wake = True
-
-        @workflow.query(name="state")
-        def state(self) -> dict[str, Any]:
-            return {
-                "iteration": self._iteration,
-                "stopping": self._stop,
-                "last_signal": self._last_signal,
-                "last_decision": self._last_decision,
-            }
-
-        @workflow.run
-        async def run(
-            self,
-            mission_id: str,
-            poll_seconds: int = 30,
-        ) -> str:
-            retry = RetryPolicy(
-                initial_interval=timedelta(seconds=1),
-                backoff_coefficient=2.0,
-                maximum_interval=timedelta(seconds=30),
-                maximum_attempts=5,
-            )
-
-            while not self._stop:
-                self._iteration += 1
-                decision = await workflow.execute_activity(
-                    "evaluate_mission",
-                    mission_id,
-                    start_to_close_timeout=timedelta(seconds=30),
-                    retry_policy=retry,
-                )
-                self._last_decision = dict(decision)
-                action = decision["action"]
-
-                if action == "COMPLETE":
-                    return "COMPLETE"
-
-                if action == "REASSIGN":
-                    await workflow.execute_activity(
-                        "dispatch_next_agent",
-                        mission_id,
-                        start_to_close_timeout=timedelta(minutes=2),
-                        retry_policy=retry,
-                    )
-                elif action == "REVIEW":
-                    await workflow.execute_activity(
-                        "request_review",
-                        mission_id,
-                        start_to_close_timeout=timedelta(minutes=2),
-                        retry_policy=retry,
-                    )
-
-                if self._last_signal:
-                    signal_payload = dict(self._last_signal)
-                    signal_payload["mission_id"] = mission_id
-                    await workflow.execute_activity(
-                        "workflow_signal",
-                        signal_payload,
-                        start_to_close_timeout=timedelta(seconds=30),
-                        retry_policy=retry,
-                    )
-                    self._last_signal = None
-
-                self._wake = False
-                try:
-                    await workflow.wait_condition(
-                        lambda: self._wake or self._stop,
-                        timeout=timedelta(seconds=max(poll_seconds, 1)),
-                    )
-                except TimeoutError:
-                    pass
-
-            return "STOPPED"
-
-
 async def run_worker(config: TemporalRuntimeConfig) -> None:
-    if Client is None or Worker is None or workflow is None:
+    if Client is None or Worker is None:
         raise RuntimeError(
             'Temporal SDK is not installed; install with: pip install -e ".[temporal]"'
         )
