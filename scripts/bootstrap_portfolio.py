@@ -8,7 +8,6 @@ from pathlib import Path
 
 from mission_control.store import MissionStore
 
-
 DYNAMIC_DEFAULTS = {
     "current-mission.json": {
         "mission_id": None,

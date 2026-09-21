@@ -6,7 +6,6 @@ import json
 import subprocess
 from pathlib import Path
 
-
 REQUIRED_CHANNEL_FILES = (
     "README.md",
     "repository.json",
