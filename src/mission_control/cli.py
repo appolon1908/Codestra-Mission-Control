@@ -77,6 +77,7 @@ def main() -> None:
     status.add_argument("--mission", required=True)
 
     sub.add_parser("expired")
+    sub.add_parser("repositories")
 
     args = parser.parse_args()
     store = _store(args.db)
@@ -182,6 +183,21 @@ def main() -> None:
 
     if args.command == "expired":
         print(json.dumps({"expired": leases.expired_missions()}, sort_keys=True))
+        return
+
+    if args.command == "repositories":
+        rows = [dict(row) for row in store.list_repositories()]
+        print(
+            json.dumps(
+                {
+                    "count": len(rows),
+                    "local": sum(int(row["local_present"]) for row in rows),
+                    "missing": sum(1 for row in rows if not row["local_present"]),
+                    "repositories": rows,
+                },
+                sort_keys=True,
+            )
+        )
         return
 
 
