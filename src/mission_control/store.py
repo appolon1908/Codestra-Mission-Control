@@ -73,6 +73,24 @@ class MissionStore:
                     expires_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS agent_executions (
+                    execution_id TEXT PRIMARY KEY,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    agent_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    runner_pid INTEGER,
+                    worktree TEXT NOT NULL,
+                    command_json TEXT NOT NULL,
+                    stdout_path TEXT NOT NULL,
+                    stderr_path TEXT NOT NULL,
+                    result_path TEXT NOT NULL,
+                    session_id TEXT,
+                    exit_code INTEGER,
+                    started_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
@@ -235,6 +253,98 @@ class MissionStore:
                 raise KeyError(mission_id)
             self._event(conn, mission_id, "STATUS_CHANGED", None, {"status": status.value})
             conn.execute("COMMIT")
+
+    def create_agent_execution(
+        self,
+        *,
+        execution_id: str,
+        mission_id: str,
+        agent_id: str,
+        provider: str,
+        state: str,
+        runner_pid: int,
+        worktree: str,
+        command: list[str],
+        stdout_path: str,
+        stderr_path: str,
+        result_path: str,
+    ) -> None:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO agent_executions (
+                    execution_id, mission_id, agent_id, provider, state,
+                    runner_pid, worktree, command_json, stdout_path, stderr_path,
+                    result_path, started_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    execution_id,
+                    mission_id,
+                    agent_id,
+                    provider,
+                    state,
+                    runner_pid,
+                    worktree,
+                    json.dumps(command),
+                    stdout_path,
+                    stderr_path,
+                    result_path,
+                    now,
+                    now,
+                ),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "AGENT_EXECUTION_STARTED",
+                agent_id,
+                {
+                    "execution_id": execution_id,
+                    "provider": provider,
+                    "runner_pid": runner_pid,
+                    "worktree": worktree,
+                },
+            )
+
+    def update_agent_execution(
+        self,
+        execution_id: str,
+        *,
+        state: str | None = None,
+        session_id: str | None = None,
+        exit_code: int | None = None,
+    ) -> None:
+        fields: list[str] = []
+        values: list[object] = []
+        if state is not None:
+            fields.append("state=?")
+            values.append(state)
+        if session_id is not None:
+            fields.append("session_id=?")
+            values.append(session_id)
+        if exit_code is not None:
+            fields.append("exit_code=?")
+            values.append(exit_code)
+        if not fields:
+            return
+        fields.append("updated_at=?")
+        values.append(_iso_now())
+        values.append(execution_id)
+        with self.connection() as conn:
+            conn.execute(
+                f"UPDATE agent_executions SET {', '.join(fields)} WHERE execution_id=?",
+                values,
+            )
+
+    def get_agent_execution(self, execution_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM agent_executions WHERE execution_id=?",
+                (execution_id,),
+            ).fetchone()
 
     def record_checkpoint(
         self,

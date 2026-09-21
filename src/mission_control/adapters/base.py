@@ -1,7 +1,6 @@
-
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 
@@ -15,6 +14,9 @@ class AgentAssignment:
     base_sha: str
     goal: str
     acceptance: tuple[str, ...]
+    include_paths: tuple[str, ...] = ("**",)
+    exclude_paths: tuple[str, ...] = ()
+    max_turns: int = 30
 
 
 @dataclass(frozen=True)
@@ -29,14 +31,34 @@ class AgentHandoff:
     request_next_task: bool
 
 
+@dataclass(frozen=True)
+class AgentExecution:
+    execution_id: str
+    mission_id: str
+    agent_id: str
+    provider: str
+    state: str
+    worktree: str
+    runner_pid: int | None = None
+    session_id: str | None = None
+    exit_code: int | None = None
+    stdout_path: str | None = None
+    stderr_path: str | None = None
+    result_path: str | None = None
+    metadata: dict[str, str] = field(default_factory=dict)
+
+
 class AgentAdapter(Protocol):
     name: str
 
-    def dispatch(self, assignment: AgentAssignment) -> str:
+    def auth_status(self) -> dict[str, object]:
         ...
 
-    def stop(self, execution_id: str) -> None:
+    def dispatch(self, assignment: AgentAssignment) -> AgentExecution:
         ...
 
-    def status(self, execution_id: str) -> str:
+    def stop(self, execution_id: str) -> AgentExecution:
+        ...
+
+    def status(self, execution_id: str) -> AgentExecution:
         ...
