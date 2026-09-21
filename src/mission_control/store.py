@@ -50,6 +50,20 @@ class MissionStore:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS repositories (
+                    repository TEXT PRIMARY KEY,
+                    full_name TEXT,
+                    local_path TEXT,
+                    origin_url TEXT,
+                    default_branch TEXT,
+                    visibility TEXT,
+                    local_present INTEGER NOT NULL DEFAULT 0,
+                    mission_channel_path TEXT,
+                    workspace_path TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS leases (
                     mission_id TEXT PRIMARY KEY REFERENCES missions(mission_id) ON DELETE CASCADE,
                     agent_id TEXT NOT NULL,
@@ -144,6 +158,63 @@ class MissionStore:
                 {"status": mission.status.value, "repository": mission.repository},
             )
             conn.execute("COMMIT")
+
+    def upsert_repository(
+        self,
+        repository: str,
+        *,
+        full_name: str | None,
+        local_path: str | None,
+        origin_url: str | None,
+        default_branch: str | None,
+        visibility: str | None,
+        local_present: bool,
+        mission_channel_path: str | None,
+        workspace_path: str | None,
+    ) -> None:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO repositories (
+                    repository, full_name, local_path, origin_url, default_branch,
+                    visibility, local_present, mission_channel_path, workspace_path,
+                    created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(repository) DO UPDATE SET
+                    full_name=excluded.full_name,
+                    local_path=excluded.local_path,
+                    origin_url=excluded.origin_url,
+                    default_branch=excluded.default_branch,
+                    visibility=excluded.visibility,
+                    local_present=excluded.local_present,
+                    mission_channel_path=excluded.mission_channel_path,
+                    workspace_path=excluded.workspace_path,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    repository,
+                    full_name,
+                    local_path,
+                    origin_url,
+                    default_branch,
+                    visibility,
+                    int(local_present),
+                    mission_channel_path,
+                    workspace_path,
+                    now,
+                    now,
+                ),
+            )
+
+    def list_repositories(self) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM repositories ORDER BY lower(repository), repository"
+                )
+            )
 
     def get_mission(self, mission_id: str) -> sqlite3.Row | None:
         with self.connection() as conn:

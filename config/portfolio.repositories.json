@@ -1,0 +1,412 @@
+{
+  "owner": "ingtrader21-spec",
+  "generated_from": "GitHub connector",
+  "repositories": [
+    {
+      "name": "Agent-Desktop-WebRTC",
+      "full_name": "ingtrader21-spec/Agent-Desktop-WebRTC",
+      "clone_url": "https://github.com/ingtrader21-spec/Agent-Desktop-WebRTC.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "backend2",
+      "full_name": "ingtrader21-spec/backend2",
+      "clone_url": "https://github.com/ingtrader21-spec/backend2.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "beyvra-backend",
+      "full_name": "ingtrader21-spec/beyvra-backend",
+      "clone_url": "https://github.com/ingtrader21-spec/beyvra-backend.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "beyvra-frontend",
+      "full_name": "ingtrader21-spec/beyvra-frontend",
+      "clone_url": "https://github.com/ingtrader21-spec/beyvra-frontend.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "booked4seasons",
+      "full_name": "ingtrader21-spec/booked4seasons",
+      "clone_url": "https://github.com/ingtrader21-spec/booked4seasons.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Breero.com",
+      "full_name": "ingtrader21-spec/Breero.com",
+      "clone_url": "https://github.com/ingtrader21-spec/Breero.com.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "Caddy",
+      "full_name": "ingtrader21-spec/Caddy",
+      "clone_url": "https://github.com/ingtrader21-spec/Caddy.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codesrea-Social-",
+      "full_name": "ingtrader21-spec/Codesrea-Social-",
+      "clone_url": "https://github.com/ingtrader21-spec/Codesrea-Social-.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "codestra",
+      "full_name": "ingtrader21-spec/codestra",
+      "clone_url": "https://github.com/ingtrader21-spec/codestra.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-AI",
+      "full_name": "ingtrader21-spec/Codestra-AI",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-AI.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Alertmanager",
+      "full_name": "ingtrader21-spec/Codestra-Alertmanager",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Alertmanager.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Alloy",
+      "full_name": "ingtrader21-spec/Codestra-Alloy",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Alloy.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "codestra-backend",
+      "full_name": "ingtrader21-spec/codestra-backend",
+      "clone_url": "https://github.com/ingtrader21-spec/codestra-backend.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Blackbox-Exporter",
+      "full_name": "ingtrader21-spec/Codestra-Blackbox-Exporter",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Blackbox-Exporter.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-cAdvisor",
+      "full_name": "ingtrader21-spec/Codestra-cAdvisor",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-cAdvisor.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Communication-CC",
+      "full_name": "ingtrader21-spec/Codestra-Communication-CC",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Communication-CC.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "codestra-foundation",
+      "full_name": "ingtrader21-spec/codestra-foundation",
+      "clone_url": "https://github.com/ingtrader21-spec/codestra-foundation.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Grafana-",
+      "full_name": "ingtrader21-spec/Codestra-Grafana-",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Grafana-.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Loki",
+      "full_name": "ingtrader21-spec/Codestra-Loki",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Loki.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Marketing-",
+      "full_name": "ingtrader21-spec/Codestra-Marketing-",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Marketing-.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Node-Exporter",
+      "full_name": "ingtrader21-spec/Codestra-Node-Exporter",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Node-Exporter.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-OpenBao",
+      "full_name": "ingtrader21-spec/Codestra-OpenBao",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-OpenBao.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "codestra-platform",
+      "full_name": "ingtrader21-spec/codestra-platform",
+      "clone_url": "https://github.com/ingtrader21-spec/codestra-platform.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Postgres-Exporter",
+      "full_name": "ingtrader21-spec/Codestra-Postgres-Exporter",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Postgres-Exporter.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Prometheus",
+      "full_name": "ingtrader21-spec/Codestra-Prometheus",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Prometheus.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "codestra-provisioning-service",
+      "full_name": "ingtrader21-spec/codestra-provisioning-service",
+      "clone_url": "https://github.com/ingtrader21-spec/codestra-provisioning-service.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Redis-Exporter",
+      "full_name": "ingtrader21-spec/Codestra-Redis-Exporter",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Redis-Exporter.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "codestra-ruleset-toolkit",
+      "full_name": "ingtrader21-spec/codestra-ruleset-toolkit",
+      "clone_url": "https://github.com/ingtrader21-spec/codestra-ruleset-toolkit.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "codestra-server-c",
+      "full_name": "ingtrader21-spec/codestra-server-c",
+      "clone_url": "https://github.com/ingtrader21-spec/codestra-server-c.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Telemetry",
+      "full_name": "ingtrader21-spec/Codestra-Telemetry",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Telemetry.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Codestra-Tempo",
+      "full_name": "ingtrader21-spec/Codestra-Tempo",
+      "clone_url": "https://github.com/ingtrader21-spec/Codestra-Tempo.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "communication-platform-",
+      "full_name": "ingtrader21-spec/communication-platform-",
+      "clone_url": "https://github.com/ingtrader21-spec/communication-platform-.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Database-migrations-",
+      "full_name": "ingtrader21-spec/Database-migrations-",
+      "clone_url": "https://github.com/ingtrader21-spec/Database-migrations-.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Infustruction-repo",
+      "full_name": "ingtrader21-spec/Infustruction-repo",
+      "clone_url": "https://github.com/ingtrader21-spec/Infustruction-repo.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Keycloak",
+      "full_name": "ingtrader21-spec/Keycloak",
+      "clone_url": "https://github.com/ingtrader21-spec/Keycloak.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "klyrow-Website-",
+      "full_name": "ingtrader21-spec/klyrow-Website-",
+      "clone_url": "https://github.com/ingtrader21-spec/klyrow-Website-.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "klyrow.com",
+      "full_name": "ingtrader21-spec/klyrow.com",
+      "clone_url": "https://github.com/ingtrader21-spec/klyrow.com.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "Kong",
+      "full_name": "ingtrader21-spec/Kong",
+      "clone_url": "https://github.com/ingtrader21-spec/Kong.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "kyqra",
+      "full_name": "ingtrader21-spec/kyqra",
+      "clone_url": "https://github.com/ingtrader21-spec/kyqra.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "kyqra-crawler",
+      "full_name": "ingtrader21-spec/kyqra-crawler",
+      "clone_url": "https://github.com/ingtrader21-spec/kyqra-crawler.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "kyyow-contracts",
+      "full_name": "ingtrader21-spec/kyyow-contracts",
+      "clone_url": "https://github.com/ingtrader21-spec/kyyow-contracts.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "LARIM-A-Backend",
+      "full_name": "ingtrader21-spec/LARIM-A-Backend",
+      "clone_url": "https://github.com/ingtrader21-spec/LARIM-A-Backend.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Middleware-",
+      "full_name": "ingtrader21-spec/Middleware-",
+      "clone_url": "https://github.com/ingtrader21-spec/Middleware-.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "Moneybee-Backend",
+      "full_name": "ingtrader21-spec/Moneybee-Backend",
+      "clone_url": "https://github.com/ingtrader21-spec/Moneybee-Backend.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Moneybee-frontend-",
+      "full_name": "ingtrader21-spec/Moneybee-frontend-",
+      "clone_url": "https://github.com/ingtrader21-spec/Moneybee-frontend-.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "N8N",
+      "full_name": "ingtrader21-spec/N8N",
+      "clone_url": "https://github.com/ingtrader21-spec/N8N.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Odoo",
+      "full_name": "ingtrader21-spec/Odoo",
+      "clone_url": "https://github.com/ingtrader21-spec/Odoo.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "OpenAPI",
+      "full_name": "ingtrader21-spec/OpenAPI",
+      "clone_url": "https://github.com/ingtrader21-spec/OpenAPI.git",
+      "visibility": "public",
+      "default_branch": "main"
+    },
+    {
+      "name": "scrapper",
+      "full_name": "ingtrader21-spec/scrapper",
+      "clone_url": "https://github.com/ingtrader21-spec/scrapper.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "SDK-repository",
+      "full_name": "ingtrader21-spec/SDK-repository",
+      "clone_url": "https://github.com/ingtrader21-spec/SDK-repository.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Sentry",
+      "full_name": "ingtrader21-spec/Sentry",
+      "clone_url": "https://github.com/ingtrader21-spec/Sentry.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "social.codestra.co",
+      "full_name": "ingtrader21-spec/social.codestra.co",
+      "clone_url": "https://github.com/ingtrader21-spec/social.codestra.co.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Superset",
+      "full_name": "ingtrader21-spec/Superset",
+      "clone_url": "https://github.com/ingtrader21-spec/Superset.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "telnexa",
+      "full_name": "ingtrader21-spec/telnexa",
+      "clone_url": "https://github.com/ingtrader21-spec/telnexa.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Telnexa-web",
+      "full_name": "ingtrader21-spec/Telnexa-web",
+      "clone_url": "https://github.com/ingtrader21-spec/Telnexa-web.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Vicidialer-Codestra",
+      "full_name": "ingtrader21-spec/Vicidialer-Codestra",
+      "clone_url": "https://github.com/ingtrader21-spec/Vicidialer-Codestra.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "Wazuh",
+      "full_name": "ingtrader21-spec/Wazuh",
+      "clone_url": "https://github.com/ingtrader21-spec/Wazuh.git",
+      "visibility": "private",
+      "default_branch": "main"
+    },
+    {
+      "name": "websocket",
+      "full_name": "ingtrader21-spec/websocket",
+      "clone_url": "https://github.com/ingtrader21-spec/websocket.git",
+      "visibility": "public",
+      "default_branch": "main"
+    }
+  ]
+}
