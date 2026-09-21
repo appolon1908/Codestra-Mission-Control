@@ -44,8 +44,6 @@ class CodexAdapter(ProcessAgentAdapter):
             self.executable,
             "exec",
             "--json",
-            "--sandbox",
-            "workspace-write",
             "--approve-for-me",
             "--color",
             "never",

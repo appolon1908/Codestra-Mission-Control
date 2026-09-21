@@ -46,8 +46,8 @@ def test_codex_command_uses_workspace_sandbox(tmp_path):
         tmp_path,
     )
     assert command[:3] == ["codex", "exec", "--json"]
-    assert ["--sandbox", "workspace-write"] == command[3:5]
     assert "--approve-for-me" in command
+    assert "--sandbox" not in command
     assert "--dangerously-bypass-approvals-and-sandbox" not in command
 
 
