@@ -15,6 +15,8 @@ class ControllerAction(StrEnum):
     CONTINUE = "CONTINUE"
     REASSIGN = "REASSIGN"
     REVIEW = "REVIEW"
+    VERIFY = "VERIFY"
+    MERGE_COORDINATE = "MERGE_COORDINATE"
     COMPLETE = "COMPLETE"
 
 
@@ -40,8 +42,17 @@ class MissionController:
         if status == MissionStatus.COMPLETE:
             return ControllerDecision(ControllerAction.COMPLETE, "mission already complete")
 
-        if status in {MissionStatus.IN_REVIEW, MissionStatus.MERGE_READY}:
-            return ControllerDecision(ControllerAction.REVIEW, "external review/certification required")
+        if status is MissionStatus.IN_REVIEW:
+            return ControllerDecision(ControllerAction.REVIEW, "independent review required")
+
+        if status is MissionStatus.VERIFYING:
+            return ControllerDecision(ControllerAction.VERIFY, "independent verification required")
+
+        if status in {MissionStatus.MERGE_COORDINATING, MissionStatus.MERGE_READY}:
+            return ControllerDecision(
+                ControllerAction.MERGE_COORDINATE,
+                "merge coordinator must evaluate exact-SHA gates",
+            )
 
         if lease:
             from datetime import datetime

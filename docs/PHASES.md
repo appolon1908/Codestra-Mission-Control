@@ -16,8 +16,15 @@ Linear mission adapter, Notion continuity adapter, GitHub PR/CI adapter.
 Create/reuse worktrees, file fences, clean/dirty protection, exact-head verification.
 
 ## MC-05 — Approval and certification engine
-Reviewer lane, staging gate, production human gate, evidence bundle.
+Reviewer lane, exact-SHA approvals, staging gate, production human gate,
+evidence bundle.
+
+## MC-05B — Merge Coordinator / PAS-258
+Persistent SHA-bound Reviewer and Verifier approvals, stale-approval
+invalidation, conflict-class records, dependency-aware merge queue,
+protected merge predicate, merge result ledger and automatic
+Builder/Reviewer/Verifier redispatch requests.
 
 ## MC-06 — 24/7 operations
 Watchdog, escalation timers, reminders, morning report, stuck-agent takeover,
-three-agent scheduling and service observability.
+four-level scheduling and service observability.

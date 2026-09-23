@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .controller import MissionController
+from .models import AgentRole
 from .store import MissionStore
 
 try:
@@ -82,25 +83,99 @@ class MissionActivities:
         return result
 
     async def dispatch_next_agent(self, mission_id: str) -> dict[str, str]:
+        mission = self.store.get_mission(mission_id)
+        head_sha = mission["head_sha"] if mission else None
+        dispatch_id = self.store.request_dispatch(
+            mission_id,
+            role=AgentRole.WRITER,
+            reason="Temporal requested Builder dispatch",
+            head_sha=head_sha,
+        )
         self._event(
             mission_id,
             "DISPATCH_REQUESTED",
-            payload={"source": "temporal"},
+            payload={
+                "source": "temporal",
+                "role": AgentRole.WRITER.value,
+                "dispatch_id": dispatch_id,
+            },
         )
         return {
             "mission_id": mission_id,
             "status": "DISPATCH_REQUESTED",
+            "role": AgentRole.WRITER.value,
         }
 
     async def request_review(self, mission_id: str) -> dict[str, str]:
+        mission = self.store.get_mission(mission_id)
+        head_sha = mission["head_sha"] if mission else None
+        dispatch_id = self.store.request_dispatch(
+            mission_id,
+            role=AgentRole.REVIEWER,
+            reason="Temporal requested independent review",
+            head_sha=head_sha,
+        )
         self._event(
             mission_id,
             "REVIEW_REQUESTED",
-            payload={"source": "temporal"},
+            payload={
+                "source": "temporal",
+                "role": AgentRole.REVIEWER.value,
+                "dispatch_id": dispatch_id,
+            },
         )
         return {
             "mission_id": mission_id,
             "status": "REVIEW_REQUESTED",
+            "role": AgentRole.REVIEWER.value,
+        }
+
+    async def request_verification(self, mission_id: str) -> dict[str, str]:
+        mission = self.store.get_mission(mission_id)
+        head_sha = mission["head_sha"] if mission else None
+        dispatch_id = self.store.request_dispatch(
+            mission_id,
+            role=AgentRole.VERIFIER,
+            reason="Temporal requested independent verification",
+            head_sha=head_sha,
+        )
+        self._event(
+            mission_id,
+            "VERIFICATION_REQUESTED",
+            payload={
+                "source": "temporal",
+                "role": AgentRole.VERIFIER.value,
+                "dispatch_id": dispatch_id,
+            },
+        )
+        return {
+            "mission_id": mission_id,
+            "status": "VERIFICATION_REQUESTED",
+            "role": AgentRole.VERIFIER.value,
+        }
+
+    async def coordinate_merge(self, mission_id: str) -> dict[str, str]:
+        mission = self.store.get_mission(mission_id)
+        head_sha = mission["head_sha"] if mission else None
+        dispatch_id = self.store.request_dispatch(
+            mission_id,
+            role=AgentRole.MERGE_COORDINATOR,
+            reason="Temporal requested exact-SHA merge coordination",
+            head_sha=head_sha,
+        )
+        self._event(
+            mission_id,
+            "MERGE_COORDINATION_REQUESTED",
+            payload={
+                "source": "temporal",
+                "role": AgentRole.MERGE_COORDINATOR.value,
+                "dispatch_id": dispatch_id,
+            },
+        )
+        return {
+            "mission_id": mission_id,
+            "status": "MERGE_COORDINATION_REQUESTED",
+            "role": AgentRole.MERGE_COORDINATOR.value,
         }
 
     async def workflow_signal(
@@ -127,6 +202,12 @@ if activity is not None:
     MissionActivities.request_review = activity.defn(
         name="request_review"
     )(MissionActivities.request_review)
+    MissionActivities.request_verification = activity.defn(
+        name="request_verification"
+    )(MissionActivities.request_verification)
+    MissionActivities.coordinate_merge = activity.defn(
+        name="coordinate_merge"
+    )(MissionActivities.coordinate_merge)
     MissionActivities.workflow_signal = activity.defn(
         name="workflow_signal"
     )(MissionActivities.workflow_signal)
@@ -150,6 +231,8 @@ async def run_worker(config: TemporalRuntimeConfig) -> None:
             activities.evaluate_mission,
             activities.dispatch_next_agent,
             activities.request_review,
+            activities.request_verification,
+            activities.coordinate_merge,
             activities.workflow_signal,
         ],
     )

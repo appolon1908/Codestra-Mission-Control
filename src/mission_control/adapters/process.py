@@ -89,17 +89,22 @@ class ProcessAgentAdapter(ABC):
     def extract_session_id(self, stdout_path: Path) -> str | None:
         raise NotImplementedError
 
-    def _assert_writer_lease(self, assignment: AgentAssignment) -> None:
+    def _assert_assignment_lease(self, assignment: AgentAssignment) -> None:
         lease = self.leases.current(assignment.mission_id)
         if not lease or lease["agent_id"] != assignment.agent_id:
             raise LeaseNotOwned(
-                f"{assignment.agent_id} does not own writer lease for "
+                f"{assignment.agent_id} does not own {assignment.role.value} lease for "
                 f"{assignment.mission_id}"
             )
-        if lease["role"] != "WRITER":
+        if lease["role"] != assignment.role.value:
             raise LeaseNotOwned(
-                f"{assignment.agent_id} has {lease['role']} lease, not WRITER"
+                f"{assignment.agent_id} has {lease['role']} lease, "
+                f"not {assignment.role.value}"
             )
+
+    def _assert_writer_lease(self, assignment: AgentAssignment) -> None:
+        """Backward-compatible alias used by older callers/tests."""
+        self._assert_assignment_lease(assignment)
 
     def build_prompt(self, assignment: AgentAssignment) -> str:
         acceptance = "\n".join(f"- {item}" for item in assignment.acceptance)
@@ -108,6 +113,7 @@ class ProcessAgentAdapter(ABC):
         return (
             f"MISSION_ID={assignment.mission_id}\n"
             f"AGENT_ID={assignment.agent_id}\n"
+            f"AGENT_ROLE={assignment.role.value}\n"
             f"REPOSITORY={assignment.repository}\n"
             f"WORKTREE={assignment.worktree}\n"
             f"BRANCH={assignment.branch}\n"
@@ -119,6 +125,7 @@ class ProcessAgentAdapter(ABC):
             f"{acceptance}\n\n"
             "MANDATORY RULES:\n"
             "- Work only inside the assigned worktree and file fence.\n"
+            f"- Operate only as {assignment.role.value}; do not assume another role.\n"
             "- Do not force-push, reset, clean, stash-destroy, merge, deploy, "
             "or mutate production.\n"
             "- Do not self-assign another mission.\n"
@@ -129,7 +136,7 @@ class ProcessAgentAdapter(ABC):
         )
 
     def dispatch(self, assignment: AgentAssignment) -> AgentExecution:
-        self._assert_writer_lease(assignment)
+        self._assert_assignment_lease(assignment)
         auth = self.auth_status()
         if not bool(auth.get("authenticated")):
             raise AgentNotAuthenticated(f"{self.name} is not authenticated")

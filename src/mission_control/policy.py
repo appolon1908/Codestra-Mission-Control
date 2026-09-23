@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .models import ApprovalLevel
+from .models import ApprovalGate, ApprovalLevel
 from .store import MissionStore
 
 
@@ -37,6 +37,33 @@ class ApprovalPolicy:
 
         if required <= ApprovalLevel.LOCAL_WRITE:
             return PolicyDecision(True, required, approved, "low-risk action")
+
+        if required >= ApprovalLevel.MERGE:
+            mission = self.store.get_mission(mission_id)
+            head_sha = mission["head_sha"] if mission else None
+            merge_authorization = (
+                self.store.latest_valid_sha_approval(
+                    mission_id,
+                    ApprovalGate.MERGE_AUTHORIZATION,
+                    head_sha,
+                )
+                if head_sha
+                else None
+            )
+            if not merge_authorization:
+                return PolicyDecision(
+                    False,
+                    required,
+                    approved,
+                    "merge-or-higher action requires exact-SHA Merge Coordinator authorization",
+                )
+            if required == ApprovalLevel.MERGE:
+                return PolicyDecision(
+                    True,
+                    required,
+                    ApprovalLevel.MERGE,
+                    f"exact-SHA merge authorization recorded for {head_sha}",
+                )
 
         if approved >= required:
             return PolicyDecision(True, required, approved, "required approval recorded")

@@ -5,6 +5,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from mission_control.models import AgentRole
+
 from .base import AgentAssignment
 from .process import ProcessAgentAdapter
 
@@ -13,6 +15,7 @@ class ClaudeAdapter(ProcessAgentAdapter):
     name = "claude"
 
     SAFE_TOOLS = "Read,Edit,Write,Glob,Grep"
+    REVIEW_TOOLS = "Read,Glob,Grep"
 
     def discover_executable(self) -> str:
         candidates: list[Path] = []
@@ -79,7 +82,7 @@ class ClaudeAdapter(ProcessAgentAdapter):
             "none",
             "--restricted",
             "--tools",
-            self.SAFE_TOOLS,
+            self.REVIEW_TOOLS if assignment.role is AgentRole.REVIEWER else self.SAFE_TOOLS,
             "--max-turns",
             str(assignment.max_turns),
             "--name",
