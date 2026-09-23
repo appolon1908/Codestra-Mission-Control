@@ -2,16 +2,31 @@
   "max_parallel_writers": 3,
   "lease_ttl_seconds": 600,
   "heartbeat_target_seconds": 120,
-  "watchdog_interval_seconds": 30,
+  "watchdog_interval_seconds": 120,
+  "notification_retry_seconds": 300,
+  "notification_max_attempts": 3,
+  "email_escalation_after_attempts": 3,
   "workers": [
-    {"agent_id": "codex-01", "provider": "codex"},
-    {"agent_id": "claude-01", "provider": "claude"},
-    {"agent_id": "codex-02", "provider": "codex"}
+    {"agent_id": "codex-01", "provider": "codex", "role": "WRITER"},
+    {"agent_id": "claude-01", "provider": "claude", "role": "REVIEWER"},
+    {"agent_id": "codex-02", "provider": "codex", "role": "VERIFIER"}
   ],
   "rules": {
     "schedule_statuses": ["READY", "QUEUED"],
     "blocked_statuses": ["BLOCKED", "NEEDS_DECISION"],
     "dirty_expired_worktree": "NEEDS_DECISION",
-    "max_parallel_writers": 3
+    "max_parallel_writers": 3,
+    "notification_incident_key": "mission+role+exact_head_sha",
+    "new_head_invalidates_old_notification_incident": true,
+    "single_notification_authority": true
+  },
+  "email": {
+    "recipient_env": "MISSION_CONTROL_ESCALATION_EMAIL_TO",
+    "sender_env": "MISSION_CONTROL_ESCALATION_EMAIL_FROM",
+    "smtp_host_env": "MISSION_CONTROL_SMTP_HOST",
+    "smtp_port_env": "MISSION_CONTROL_SMTP_PORT",
+    "smtp_username_env": "MISSION_CONTROL_SMTP_USERNAME",
+    "smtp_password_env": "MISSION_CONTROL_SMTP_PASSWORD",
+    "smtp_starttls_env": "MISSION_CONTROL_SMTP_STARTTLS"
   }
 }

@@ -23,6 +23,7 @@ The foundation implements:
 - persistent conflict records and dependency-aware merge queue;
 - stale-approval invalidation whenever a mission head changes;
 - persisted Builder/Reviewer/Verifier redispatch requests;
+- 2-minute handoff watch, 5-minute reminders, 3-attempt email escalation;
 - persistent SQLite event ledger;
 - CLI for local automation;
 - adapter contract for Codex, Claude and future workers;

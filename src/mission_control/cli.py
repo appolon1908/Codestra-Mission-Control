@@ -16,6 +16,7 @@ from .models import (
     Mission,
     MissionStatus,
 )
+from .notification_escalation import NotificationEscalator
 from .policy import ApprovalPolicy
 from .store import MissionStore
 
@@ -149,6 +150,15 @@ def main() -> None:
 
     dispatch_requests = sub.add_parser("dispatch-requests")
     dispatch_requests.add_argument("--role", choices=[r.value for r in AgentRole])
+
+    notifications = sub.add_parser("notifications")
+    notifications.add_argument("--open-only", action="store_true")
+
+    notification_ack = sub.add_parser("notification-ack")
+    notification_ack.add_argument("--incident-id", type=int, required=True)
+    notification_ack.add_argument("--actor", required=True)
+
+    sub.add_parser("notification-outbox")
 
     sub.add_parser("expired")
     sub.add_parser("repositories")
@@ -406,6 +416,46 @@ def main() -> None:
                     "dispatch_requests": [
                         dict(row)
                         for row in store.pending_dispatch_requests(role=role)
+                    ]
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "notifications":
+        rows = (
+            store.list_open_notification_incidents()
+            if args.open_only
+            else store.list_notification_incidents()
+        )
+        print(
+            json.dumps(
+                {"notifications": [dict(row) for row in rows]},
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "notification-ack":
+        NotificationEscalator(store).acknowledge(
+            args.incident_id,
+            actor=args.actor,
+        )
+        print(
+            json.dumps(
+                {"ok": True, "incident_id": args.incident_id},
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "notification-outbox":
+        print(
+            json.dumps(
+                {
+                    "notification_outbox": [
+                        dict(row) for row in store.list_notification_outbox()
                     ]
                 },
                 sort_keys=True,

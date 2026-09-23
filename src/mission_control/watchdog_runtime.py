@@ -7,6 +7,14 @@ from pathlib import Path
 
 from .adapters.claude import ClaudeAdapter
 from .adapters.codex import CodexAdapter
+from .models import AgentRole
+from .notification_escalation import (
+    EmailEscalationSender,
+    NotificationEscalator,
+    NotificationPolicy,
+    SMTPConfig,
+    mark_agent_notifications_emitted,
+)
 from .scheduler import MissionScheduler, WorkerSlot
 from .store import MissionStore
 
@@ -40,9 +48,24 @@ def build_scheduler(
             availability[provider] = False
 
     workers = (
-        WorkerSlot("codex-01", "codex", enabled=availability["codex"]),
-        WorkerSlot("claude-01", "claude", enabled=availability["claude"]),
-        WorkerSlot("codex-02", "codex", enabled=availability["codex"]),
+        WorkerSlot(
+            "codex-01",
+            "codex",
+            enabled=availability["codex"],
+            role=AgentRole.WRITER,
+        ),
+        WorkerSlot(
+            "claude-01",
+            "claude",
+            enabled=availability["claude"],
+            role=AgentRole.REVIEWER,
+        ),
+        WorkerSlot(
+            "codex-02",
+            "codex",
+            enabled=availability["codex"],
+            role=AgentRole.VERIFIER,
+        ),
     )
     return MissionScheduler(
         store,
@@ -62,7 +85,9 @@ def main() -> int:
         default=r"C:\Users\agent\Documents\GitHub\.worktrees",
     )
     parser.add_argument("--max-parallel", type=int, default=3)
-    parser.add_argument("--interval", type=int, default=30)
+    parser.add_argument("--interval", type=int, default=120)
+    parser.add_argument("--notification-retry", type=int, default=300)
+    parser.add_argument("--notification-attempts", type=int, default=3)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
 
@@ -72,12 +97,34 @@ def main() -> int:
         worktree_root=Path(args.worktree_root),
         max_parallel=args.max_parallel,
     )
+    policy = NotificationPolicy(
+        check_interval_seconds=args.interval,
+        retry_interval_seconds=args.notification_retry,
+        max_attempts=args.notification_attempts,
+    )
+    escalator = NotificationEscalator(scheduler.store, policy=policy)
+    email_sender = EmailEscalationSender(SMTPConfig.from_env())
+
     while True:
         snapshot = scheduler.tick()
-        print(json.dumps(snapshot, default=lambda value: value.__dict__, sort_keys=True))
+        escalation = escalator.tick()
+        emitted = mark_agent_notifications_emitted(scheduler.store)
+        email = email_sender.send_due(scheduler.store)
+        print(
+            json.dumps(
+                {
+                    "scheduler": snapshot,
+                    "notification_escalation": escalation,
+                    "agent_notifications_emitted": emitted,
+                    "email": email,
+                },
+                default=lambda value: value.__dict__,
+                sort_keys=True,
+            )
+        )
         if args.once:
             return 0
-        time.sleep(max(args.interval, 5))
+        time.sleep(max(args.interval, 30))
 
 
 if __name__ == "__main__":

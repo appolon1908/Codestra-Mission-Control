@@ -72,3 +72,13 @@ Conflict classes fail closed:
 - CLASS-2: semantic/API/auth/schema/business conflict -> Builder + re-review + re-verify;
 - CLASS-3: cross-repository convergence conflict -> ordered convergence mission;
 - CLASS-4: unknown/unsafe -> BLOCKED_CONFLICT with no guessing.
+
+
+## Handoff notification escalation invariant
+
+Mission Control evaluates pending role handoffs every 2 minutes. Each
+mission/role/exact-head incident emits at most three reminders, spaced five
+minutes apart. After the third unresolved attempt, a durable EMAIL escalation
+is created. Acknowledgement, completed dispatch, or a changed HEAD stops the
+incident. Email delivery is configuration-gated and never claims success
+without a sender result.

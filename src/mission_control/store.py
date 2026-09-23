@@ -19,6 +19,9 @@ from .models import (
     MergeQueueState,
     Mission,
     MissionStatus,
+    NotificationChannel,
+    NotificationIncidentState,
+    NotificationOutboxState,
 )
 
 
@@ -206,6 +209,40 @@ class MissionStore:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS notification_incidents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    incident_key TEXT NOT NULL UNIQUE,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    required_role TEXT NOT NULL,
+                    head_sha TEXT,
+                    reason TEXT NOT NULL,
+                    link TEXT,
+                    state TEXT NOT NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    next_notification_at TEXT,
+                    email_escalated_at TEXT,
+                    acknowledged_at TEXT,
+                    resolved_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS notification_outbox (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    incident_id INTEGER NOT NULL
+                        REFERENCES notification_incidents(id) ON DELETE CASCADE,
+                    channel TEXT NOT NULL,
+                    attempt_no INTEGER NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    available_at TEXT NOT NULL,
+                    sent_at TEXT,
+                    error TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(incident_id, channel, attempt_no)
+                );
+
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mission_id TEXT NOT NULL,
@@ -227,6 +264,10 @@ class MissionStore:
                     ON merge_queue(state, priority, id);
                 CREATE INDEX IF NOT EXISTS idx_dispatch_requests_state
                     ON dispatch_requests(state, role, id);
+                CREATE INDEX IF NOT EXISTS idx_notification_incidents_due
+                    ON notification_incidents(state, next_notification_at, id);
+                CREATE INDEX IF NOT EXISTS idx_notification_outbox_due
+                    ON notification_outbox(state, available_at, id);
                 """
             )
 
@@ -1319,6 +1360,324 @@ class MissionStore:
                 (mission_id,),
             ).fetchone()
             return ApprovalLevel(int(row["level"] or 0))
+
+    def upsert_notification_incident(
+        self,
+        *,
+        incident_key: str,
+        mission_id: str,
+        required_role: AgentRole,
+        head_sha: str | None,
+        reason: str,
+        link: str | None,
+        next_notification_at: str,
+    ) -> int:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO notification_incidents (
+                    incident_key, mission_id, required_role, head_sha, reason,
+                    link, state, attempt_count, next_notification_at,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+                ON CONFLICT(incident_key) DO UPDATE SET
+                    reason=excluded.reason,
+                    link=COALESCE(excluded.link, notification_incidents.link),
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    incident_key,
+                    mission_id,
+                    required_role.value,
+                    head_sha,
+                    reason,
+                    link,
+                    NotificationIncidentState.OPEN.value,
+                    next_notification_at,
+                    now,
+                    now,
+                ),
+            )
+            row = conn.execute(
+                "SELECT id FROM notification_incidents WHERE incident_key=?",
+                (incident_key,),
+            ).fetchone()
+            assert row is not None
+            incident_id = int(row["id"])
+            self._event(
+                conn,
+                mission_id,
+                "NOTIFICATION_INCIDENT_OBSERVED",
+                None,
+                {
+                    "incident_id": incident_id,
+                    "incident_key": incident_key,
+                    "required_role": required_role.value,
+                    "head_sha": head_sha,
+                    "reason": reason,
+                },
+            )
+            conn.execute("COMMIT")
+            return incident_id
+
+    def list_notification_incidents(self) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM notification_incidents ORDER BY id"
+                )
+            )
+
+    def list_open_notification_incidents(self) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    """
+                    SELECT * FROM notification_incidents
+                    WHERE state=? ORDER BY id
+                    """,
+                    (NotificationIncidentState.OPEN.value,),
+                )
+            )
+
+    def due_notification_incidents(self, now_iso: str) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    """
+                    SELECT * FROM notification_incidents
+                    WHERE state=?
+                      AND next_notification_at IS NOT NULL
+                      AND next_notification_at<=?
+                    ORDER BY next_notification_at, id
+                    """,
+                    (NotificationIncidentState.OPEN.value, now_iso),
+                )
+            )
+
+    def set_notification_incident_state(
+        self,
+        incident_id: int,
+        state: NotificationIncidentState,
+        *,
+        actor: str,
+    ) -> None:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT mission_id FROM notification_incidents WHERE id=?",
+                (incident_id,),
+            ).fetchone()
+            if not row:
+                conn.execute("ROLLBACK")
+                raise KeyError(incident_id)
+            acknowledged_at = (
+                now if state is NotificationIncidentState.ACKNOWLEDGED else None
+            )
+            resolved_at = (
+                now
+                if state in {
+                    NotificationIncidentState.RESOLVED,
+                    NotificationIncidentState.STALE,
+                }
+                else None
+            )
+            conn.execute(
+                """
+                UPDATE notification_incidents
+                SET state=?, acknowledged_at=COALESCE(?, acknowledged_at),
+                    resolved_at=COALESCE(?, resolved_at),
+                    next_notification_at=NULL, updated_at=?
+                WHERE id=?
+                """,
+                (state.value, acknowledged_at, resolved_at, now, incident_id),
+            )
+            self._event(
+                conn,
+                row["mission_id"],
+                "NOTIFICATION_INCIDENT_STATE",
+                actor,
+                {"incident_id": incident_id, "state": state.value},
+            )
+            conn.execute("COMMIT")
+
+    def mark_notification_attempt(
+        self,
+        incident_id: int,
+        *,
+        next_notification_at: str | None,
+        email_escalated: bool,
+    ) -> int:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                """
+                SELECT mission_id, attempt_count
+                FROM notification_incidents
+                WHERE id=? AND state=?
+                """,
+                (incident_id, NotificationIncidentState.OPEN.value),
+            ).fetchone()
+            if not row:
+                conn.execute("ROLLBACK")
+                raise KeyError(incident_id)
+            attempt = int(row["attempt_count"]) + 1
+            conn.execute(
+                """
+                UPDATE notification_incidents
+                SET attempt_count=?, next_notification_at=?,
+                    email_escalated_at=CASE
+                        WHEN ? THEN COALESCE(email_escalated_at, ?)
+                        ELSE email_escalated_at
+                    END,
+                    updated_at=?
+                WHERE id=?
+                """,
+                (
+                    attempt,
+                    next_notification_at,
+                    int(email_escalated),
+                    now,
+                    now,
+                    incident_id,
+                ),
+            )
+            self._event(
+                conn,
+                row["mission_id"],
+                "NOTIFICATION_ATTEMPT",
+                None,
+                {
+                    "incident_id": incident_id,
+                    "attempt": attempt,
+                    "next_notification_at": next_notification_at,
+                    "email_escalated": email_escalated,
+                },
+            )
+            conn.execute("COMMIT")
+            return attempt
+
+    def enqueue_notification_outbox(
+        self,
+        *,
+        incident_id: int,
+        channel: NotificationChannel,
+        attempt_no: int,
+        payload: dict,
+        available_at: str,
+    ) -> int:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO notification_outbox (
+                    incident_id, channel, attempt_no, payload_json, state,
+                    available_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    incident_id,
+                    channel.value,
+                    attempt_no,
+                    json.dumps(payload, sort_keys=True),
+                    NotificationOutboxState.PENDING.value,
+                    available_at,
+                    now,
+                    now,
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT id FROM notification_outbox
+                WHERE incident_id=? AND channel=? AND attempt_no=?
+                """,
+                (incident_id, channel.value, attempt_no),
+            ).fetchone()
+            assert row is not None
+            outbox_id = int(row["id"])
+            conn.execute("COMMIT")
+            return outbox_id
+
+    def list_notification_outbox(self) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM notification_outbox ORDER BY id"
+                )
+            )
+
+    def due_notification_outbox(
+        self,
+        *,
+        now_iso: str,
+        channel: NotificationChannel | None = None,
+    ) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            if channel is None:
+                return list(
+                    conn.execute(
+                        """
+                        SELECT o.*, i.mission_id, i.required_role, i.head_sha,
+                               i.reason, i.link
+                        FROM notification_outbox o
+                        JOIN notification_incidents i ON i.id=o.incident_id
+                        WHERE o.state=? AND o.available_at<=?
+                        ORDER BY o.available_at, o.id
+                        """,
+                        (NotificationOutboxState.PENDING.value, now_iso),
+                    )
+                )
+            return list(
+                conn.execute(
+                    """
+                    SELECT o.*, i.mission_id, i.required_role, i.head_sha,
+                           i.reason, i.link
+                    FROM notification_outbox o
+                    JOIN notification_incidents i ON i.id=o.incident_id
+                    WHERE o.state=? AND o.available_at<=? AND o.channel=?
+                    ORDER BY o.available_at, o.id
+                    """,
+                    (
+                        NotificationOutboxState.PENDING.value,
+                        now_iso,
+                        channel.value,
+                    ),
+                )
+            )
+
+    def set_notification_outbox_state(
+        self,
+        outbox_id: int,
+        state: NotificationOutboxState,
+        *,
+        error: str | None = None,
+    ) -> None:
+        now = _iso_now()
+        with self.connection() as conn:
+            changed = conn.execute(
+                """
+                UPDATE notification_outbox
+                SET state=?, sent_at=CASE WHEN ?=? THEN ? ELSE sent_at END,
+                    error=?, updated_at=?
+                WHERE id=?
+                """,
+                (
+                    state.value,
+                    state.value,
+                    NotificationOutboxState.SENT.value,
+                    now,
+                    error,
+                    now,
+                    outbox_id,
+                ),
+            ).rowcount
+            if not changed:
+                raise KeyError(outbox_id)
 
     def events(self, mission_id: str) -> list[sqlite3.Row]:
         with self.connection() as conn:

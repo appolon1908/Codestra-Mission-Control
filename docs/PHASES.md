@@ -27,4 +27,4 @@ Builder/Reviewer/Verifier redispatch requests.
 
 ## MC-06 — 24/7 operations
 Watchdog, escalation timers, reminders, morning report, stuck-agent takeover,
-four-level scheduling and service observability.
+four-level scheduling, 2-minute handoff watching, 5-minute/3-attempt notification escalation, and service observability.
