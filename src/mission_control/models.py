@@ -31,6 +31,25 @@ class AgentRole(StrEnum):
     VERIFIER = "VERIFIER"
 
 
+class NotificationIncidentState(StrEnum):
+    OPEN = "OPEN"
+    ACKNOWLEDGED = "ACKNOWLEDGED"
+    RESOLVED = "RESOLVED"
+    STALE = "STALE"
+
+
+class NotificationChannel(StrEnum):
+    AGENT = "AGENT"
+    EMAIL = "EMAIL"
+
+
+class NotificationOutboxState(StrEnum):
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+    BLOCKED_CONFIG = "BLOCKED_CONFIG"
+
+
 class ApprovalLevel(IntEnum):
     READ_ONLY = 0
     LOCAL_WRITE = 1

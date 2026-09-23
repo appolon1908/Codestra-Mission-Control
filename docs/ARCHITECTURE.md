@@ -36,3 +36,12 @@ base SHA, last known HEAD, dirty state, checkpoint, test results, blockers and a
 
 No agent can self-authorize production effects. Production actions require an explicit
 human approval record at PRODUCTION_EFFECT.
+
+## Handoff notification escalation invariant
+
+Mission Control evaluates pending role handoffs every 2 minutes. Each
+mission/role/exact-head incident emits at most three reminders, spaced five
+minutes apart. After the third unresolved attempt, a durable EMAIL escalation
+is created. Acknowledgement, completed dispatch, or a changed HEAD stops the
+incident. Email delivery is configuration-gated and never claims success
+without a sender result.

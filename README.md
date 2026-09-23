@@ -20,6 +20,7 @@ The foundation implements:
 - deterministic takeover when a writer disappears;
 - structured checkpoints and handoffs;
 - action approval levels;
+- 2-minute handoff watch, 5-minute reminders, 3-attempt email escalation;
 - persistent SQLite event ledger;
 - CLI for local automation;
 - adapter contract for Codex, Claude and future workers;

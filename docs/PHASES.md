@@ -20,4 +20,4 @@ Reviewer lane, staging gate, production human gate, evidence bundle.
 
 ## MC-06 — 24/7 operations
 Watchdog, escalation timers, reminders, morning report, stuck-agent takeover,
-three-agent scheduling and service observability.
+three-agent scheduling, 2-minute handoff watching, 5-minute/3-attempt notification escalation, and service observability.
