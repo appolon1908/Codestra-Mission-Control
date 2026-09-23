@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from mission_control.models import AgentRole
+
 
 @dataclass(frozen=True)
 class AgentAssignment:
@@ -14,6 +16,7 @@ class AgentAssignment:
     base_sha: str
     goal: str
     acceptance: tuple[str, ...]
+    role: AgentRole = AgentRole.WRITER
     include_paths: tuple[str, ...] = ("**",)
     exclude_paths: tuple[str, ...] = ()
     max_turns: int = 30

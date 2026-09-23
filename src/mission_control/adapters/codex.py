@@ -5,6 +5,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from mission_control.models import AgentRole
+
 from .base import AgentAssignment
 from .process import ProcessAgentAdapter
 
@@ -52,19 +54,25 @@ class CodexAdapter(ProcessAgentAdapter):
         prompt: str,
         execution_dir: Path,
     ) -> list[str]:
-        return [
+        command = [
             self.executable,
             "exec",
             "--json",
-            "--approve-for-me",
             "--color",
             "never",
+        ]
+        if assignment.role is AgentRole.REVIEWER:
+            command += ["--sandbox", "read-only", "-c", 'approval_policy="never"']
+        else:
+            command += ["--approve-for-me"]
+        command += [
             "--cd",
             assignment.worktree,
             "--output-last-message",
             str(execution_dir / "final-message.txt"),
             prompt,
         ]
+        return command
 
     def extract_session_id(self, stdout_path: Path) -> str | None:
         if not stdout_path.is_file():

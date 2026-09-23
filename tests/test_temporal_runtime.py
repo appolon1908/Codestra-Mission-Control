@@ -100,3 +100,52 @@ def test_production_approval_is_not_auto_recorded(tmp_path):
             ("PAS-185",),
         ).fetchone()[0]
     assert count == 0
+
+
+def test_verify_activity_persists_verifier_redispatch(tmp_path):
+    db = tmp_path / "mission.db"
+    store = MissionStore(db)
+    store.initialize()
+    store.upsert_mission(
+        Mission(
+            "PAS-258-V",
+            "repo",
+            "verify",
+            status=MissionStatus.VERIFYING,
+            head_sha="a" * 40,
+        )
+    )
+    activities = MissionActivities(db)
+    decision = asyncio.run(activities.evaluate_mission("PAS-258-V"))
+    assert decision["action"] == "VERIFY"
+    result = asyncio.run(activities.request_verification("PAS-258-V"))
+    assert result["role"] == "VERIFIER"
+
+    rows = store.pending_dispatch_requests()
+    assert len(rows) == 1
+    assert rows[0]["role"] == "VERIFIER"
+    assert rows[0]["head_sha"] == "a" * 40
+
+
+def test_merge_coordinate_activity_persists_control_plane_request(tmp_path):
+    db = tmp_path / "mission.db"
+    store = MissionStore(db)
+    store.initialize()
+    store.upsert_mission(
+        Mission(
+            "PAS-258-M",
+            "repo",
+            "merge",
+            status=MissionStatus.MERGE_READY,
+            head_sha="b" * 40,
+        )
+    )
+    activities = MissionActivities(db)
+    decision = asyncio.run(activities.evaluate_mission("PAS-258-M"))
+    assert decision["action"] == "MERGE_COORDINATE"
+    result = asyncio.run(activities.coordinate_merge("PAS-258-M"))
+    assert result["role"] == "MERGE_COORDINATOR"
+
+    rows = store.pending_dispatch_requests()
+    assert len(rows) == 1
+    assert rows[0]["role"] == "MERGE_COORDINATOR"

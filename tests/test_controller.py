@@ -37,3 +37,23 @@ def test_review_state_never_self_completes(tmp_path):
     )
     decision = MissionController(store).evaluate("PAS-5")
     assert decision.action == ControllerAction.REVIEW
+
+
+def test_verify_state_requests_verification(tmp_path):
+    store = MissionStore(tmp_path / "mission.db")
+    store.initialize()
+    store.upsert_mission(
+        Mission("PAS-258-V", "repo", "verify", status=MissionStatus.VERIFYING)
+    )
+    decision = MissionController(store).evaluate("PAS-258-V")
+    assert decision.action == ControllerAction.VERIFY
+
+
+def test_merge_ready_state_requests_merge_coordinator(tmp_path):
+    store = MissionStore(tmp_path / "mission.db")
+    store.initialize()
+    store.upsert_mission(
+        Mission("PAS-258-M", "repo", "merge", status=MissionStatus.MERGE_READY)
+    )
+    decision = MissionController(store).evaluate("PAS-258-M")
+    assert decision.action == ControllerAction.MERGE_COORDINATE

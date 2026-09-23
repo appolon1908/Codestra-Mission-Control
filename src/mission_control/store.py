@@ -8,7 +8,18 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .models import ApprovalLevel, Mission, MissionStatus
+from .models import (
+    AgentRole,
+    ApprovalGate,
+    ApprovalLevel,
+    ApprovalStatus,
+    ConflictClass,
+    ConflictStatus,
+    DispatchState,
+    MergeQueueState,
+    Mission,
+    MissionStatus,
+)
 
 
 def _iso_now() -> str:
@@ -113,6 +124,88 @@ class MissionStore:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS sha_approvals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    gate TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    actor_role TEXT NOT NULL,
+                    head_sha TEXT NOT NULL,
+                    base_sha TEXT,
+                    status TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    invalidated_at TEXT,
+                    invalidation_reason TEXT,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS conflict_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    repository TEXT NOT NULL,
+                    pr_number INTEGER,
+                    head_sha TEXT NOT NULL,
+                    base_sha TEXT,
+                    conflict_class TEXT NOT NULL,
+                    files_json TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    resolution_mission_id TEXT,
+                    created_at TEXT NOT NULL,
+                    resolved_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS merge_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mission_id TEXT NOT NULL UNIQUE
+                        REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    repository TEXT NOT NULL,
+                    pr_number INTEGER,
+                    head_sha TEXT NOT NULL,
+                    base_sha TEXT,
+                    target_sha TEXT,
+                    priority INTEGER NOT NULL DEFAULT 50,
+                    state TEXT NOT NULL,
+                    reason TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS merge_dependencies (
+                    queue_id INTEGER NOT NULL REFERENCES merge_queue(id) ON DELETE CASCADE,
+                    depends_on_mission_id TEXT NOT NULL,
+                    required_merge_sha TEXT,
+                    state TEXT NOT NULL DEFAULT 'WAITING',
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(queue_id, depends_on_mission_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS merge_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    queue_id INTEGER NOT NULL REFERENCES merge_queue(id) ON DELETE CASCADE,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    repository TEXT NOT NULL,
+                    pr_number INTEGER,
+                    head_sha TEXT NOT NULL,
+                    base_sha TEXT,
+                    merge_sha TEXT NOT NULL,
+                    merge_method TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS dispatch_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    role TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    head_sha TEXT,
+                    state TEXT NOT NULL,
+                    execution_id TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mission_id TEXT NOT NULL,
@@ -126,6 +219,14 @@ class MissionStore:
                     ON events(mission_id, id);
                 CREATE INDEX IF NOT EXISTS idx_checkpoints_mission
                     ON checkpoints(mission_id, id);
+                CREATE INDEX IF NOT EXISTS idx_sha_approvals_mission_head
+                    ON sha_approvals(mission_id, head_sha, gate, status);
+                CREATE INDEX IF NOT EXISTS idx_conflicts_mission
+                    ON conflict_records(mission_id, status, id);
+                CREATE INDEX IF NOT EXISTS idx_merge_queue_state
+                    ON merge_queue(state, priority, id);
+                CREATE INDEX IF NOT EXISTS idx_dispatch_requests_state
+                    ON dispatch_requests(state, role, id);
                 """
             )
 
@@ -444,6 +545,47 @@ class MissionStore:
     ) -> int:
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            if head_sha:
+                mission = conn.execute(
+                    "SELECT head_sha FROM missions WHERE mission_id=?",
+                    (mission_id,),
+                ).fetchone()
+                if not mission:
+                    conn.execute("ROLLBACK")
+                    raise KeyError(mission_id)
+                previous_head = mission["head_sha"]
+                if previous_head != head_sha:
+                    conn.execute(
+                        "UPDATE missions SET head_sha=?, updated_at=? WHERE mission_id=?",
+                        (head_sha, _iso_now(), mission_id),
+                    )
+                    invalidated = conn.execute(
+                        """
+                        UPDATE sha_approvals
+                        SET status=?, invalidated_at=?, invalidation_reason=?
+                        WHERE mission_id=? AND status=? AND head_sha<>?
+                        """,
+                        (
+                            ApprovalStatus.STALE.value,
+                            _iso_now(),
+                            f"mission head moved to {head_sha}",
+                            mission_id,
+                            ApprovalStatus.APPROVED.value,
+                            head_sha,
+                        ),
+                    ).rowcount
+                    if invalidated:
+                        self._event(
+                            conn,
+                            mission_id,
+                            "SHA_APPROVALS_INVALIDATED",
+                            agent_id,
+                            {
+                                "previous_head_sha": previous_head,
+                                "current_head_sha": head_sha,
+                                "count": invalidated,
+                            },
+                        )
             cursor = conn.execute(
                 """
                 INSERT INTO checkpoints (
@@ -505,6 +647,666 @@ class MissionStore:
             )
             conn.execute("COMMIT")
             return int(cursor.lastrowid)
+
+    def observe_head(
+        self,
+        mission_id: str,
+        *,
+        head_sha: str,
+        base_sha: str | None = None,
+        actor: str = "merge-coordinator",
+    ) -> int:
+        """Persist the observed PR head and invalidate approvals for older heads."""
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            mission = conn.execute(
+                "SELECT head_sha, base_sha FROM missions WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            if not mission:
+                conn.execute("ROLLBACK")
+                raise KeyError(mission_id)
+            previous_head = mission["head_sha"]
+            previous_base = mission["base_sha"]
+            conn.execute(
+                """
+                UPDATE missions
+                SET head_sha=?, base_sha=COALESCE(?, base_sha), updated_at=?
+                WHERE mission_id=?
+                """,
+                (head_sha, base_sha, _iso_now(), mission_id),
+            )
+            invalidated = conn.execute(
+                """
+                UPDATE sha_approvals
+                SET status=?, invalidated_at=?, invalidation_reason=?
+                WHERE mission_id=? AND status=? AND head_sha<>?
+                """,
+                (
+                    ApprovalStatus.STALE.value,
+                    _iso_now(),
+                    f"head moved to {head_sha}",
+                    mission_id,
+                    ApprovalStatus.APPROVED.value,
+                    head_sha,
+                ),
+            ).rowcount
+            self._event(
+                conn,
+                mission_id,
+                "HEAD_OBSERVED",
+                actor,
+                {
+                    "previous_head_sha": previous_head,
+                    "current_head_sha": head_sha,
+                    "previous_base_sha": previous_base,
+                    "current_base_sha": base_sha or previous_base,
+                    "invalidated_approvals": invalidated,
+                },
+            )
+            conn.execute("COMMIT")
+            return int(invalidated)
+
+    def record_sha_approval(
+        self,
+        mission_id: str,
+        *,
+        gate: ApprovalGate,
+        actor: str,
+        actor_role: AgentRole,
+        head_sha: str,
+        base_sha: str | None = None,
+        status: ApprovalStatus = ApprovalStatus.APPROVED,
+        evidence: dict | None = None,
+    ) -> int:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            mission = conn.execute(
+                "SELECT head_sha FROM missions WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            if not mission:
+                conn.execute("ROLLBACK")
+                raise KeyError(mission_id)
+            current_head = mission["head_sha"]
+            if current_head and current_head != head_sha and status is ApprovalStatus.APPROVED:
+                conn.execute("ROLLBACK")
+                raise ValueError(
+                    f"approval head {head_sha} does not match current mission head {current_head}"
+                )
+            cursor = conn.execute(
+                """
+                INSERT INTO sha_approvals (
+                    mission_id, gate, actor, actor_role, head_sha, base_sha,
+                    status, evidence_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mission_id,
+                    gate.value,
+                    actor,
+                    actor_role.value,
+                    head_sha,
+                    base_sha,
+                    status.value,
+                    json.dumps(evidence or {}, sort_keys=True),
+                    _iso_now(),
+                ),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "SHA_APPROVAL_RECORDED",
+                actor,
+                {
+                    "approval_id": int(cursor.lastrowid),
+                    "gate": gate.value,
+                    "actor_role": actor_role.value,
+                    "head_sha": head_sha,
+                    "base_sha": base_sha,
+                    "status": status.value,
+                },
+            )
+            conn.execute("COMMIT")
+            return int(cursor.lastrowid)
+
+    def valid_sha_approvals(self, mission_id: str, head_sha: str) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    """
+                    SELECT * FROM sha_approvals
+                    WHERE mission_id=? AND head_sha=? AND status=?
+                    ORDER BY id
+                    """,
+                    (mission_id, head_sha, ApprovalStatus.APPROVED.value),
+                )
+            )
+
+    def latest_valid_sha_approval(
+        self,
+        mission_id: str,
+        gate: ApprovalGate,
+        head_sha: str,
+    ) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM sha_approvals
+                WHERE mission_id=? AND gate=? AND head_sha=? AND status=?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (
+                    mission_id,
+                    gate.value,
+                    head_sha,
+                    ApprovalStatus.APPROVED.value,
+                ),
+            ).fetchone()
+
+    def invalidate_sha_approvals(
+        self,
+        mission_id: str,
+        *,
+        current_head_sha: str,
+        reason: str,
+        actor: str = "merge-coordinator",
+    ) -> int:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            changed = conn.execute(
+                """
+                UPDATE sha_approvals
+                SET status=?, invalidated_at=?, invalidation_reason=?
+                WHERE mission_id=? AND status=? AND head_sha<>?
+                """,
+                (
+                    ApprovalStatus.STALE.value,
+                    _iso_now(),
+                    reason,
+                    mission_id,
+                    ApprovalStatus.APPROVED.value,
+                    current_head_sha,
+                ),
+            ).rowcount
+            if changed:
+                self._event(
+                    conn,
+                    mission_id,
+                    "SHA_APPROVALS_INVALIDATED",
+                    actor,
+                    {
+                        "current_head_sha": current_head_sha,
+                        "count": int(changed),
+                        "reason": reason,
+                    },
+                )
+            conn.execute("COMMIT")
+            return int(changed)
+
+    def record_conflict(
+        self,
+        mission_id: str,
+        *,
+        repository: str,
+        pr_number: int | None,
+        head_sha: str,
+        base_sha: str | None,
+        conflict_class: ConflictClass,
+        files: list[str],
+        summary: str,
+        resolution_mission_id: str | None = None,
+    ) -> int:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                """
+                INSERT INTO conflict_records (
+                    mission_id, repository, pr_number, head_sha, base_sha,
+                    conflict_class, files_json, summary, status,
+                    resolution_mission_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mission_id,
+                    repository,
+                    pr_number,
+                    head_sha,
+                    base_sha,
+                    conflict_class.value,
+                    json.dumps(files),
+                    summary,
+                    ConflictStatus.OPEN.value,
+                    resolution_mission_id,
+                    _iso_now(),
+                ),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "CONFLICT_RECORDED",
+                None,
+                {
+                    "conflict_id": int(cursor.lastrowid),
+                    "class": conflict_class.value,
+                    "head_sha": head_sha,
+                    "files": files,
+                    "summary": summary,
+                },
+            )
+            conn.execute("COMMIT")
+            return int(cursor.lastrowid)
+
+    def latest_open_conflict(self, mission_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM conflict_records
+                WHERE mission_id=? AND status=?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (mission_id, ConflictStatus.OPEN.value),
+            ).fetchone()
+
+    def resolve_conflict(
+        self,
+        conflict_id: int,
+        *,
+        actor: str,
+        resolution_mission_id: str | None = None,
+    ) -> None:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT mission_id FROM conflict_records WHERE id=?",
+                (conflict_id,),
+            ).fetchone()
+            if not row:
+                conn.execute("ROLLBACK")
+                raise KeyError(conflict_id)
+            conn.execute(
+                """
+                UPDATE conflict_records
+                SET status=?, resolved_at=?,
+                    resolution_mission_id=COALESCE(?, resolution_mission_id)
+                WHERE id=?
+                """,
+                (
+                    ConflictStatus.RESOLVED.value,
+                    _iso_now(),
+                    resolution_mission_id,
+                    conflict_id,
+                ),
+            )
+            self._event(
+                conn,
+                row["mission_id"],
+                "CONFLICT_RESOLVED",
+                actor,
+                {"conflict_id": conflict_id, "resolution_mission_id": resolution_mission_id},
+            )
+            conn.execute("COMMIT")
+
+    def enqueue_merge(
+        self,
+        mission_id: str,
+        *,
+        repository: str,
+        pr_number: int | None,
+        head_sha: str,
+        base_sha: str | None,
+        target_sha: str | None,
+        priority: int = 50,
+        state: MergeQueueState = MergeQueueState.QUEUED,
+        reason: str | None = None,
+    ) -> int:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO merge_queue (
+                    mission_id, repository, pr_number, head_sha, base_sha, target_sha,
+                    priority, state, reason, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(mission_id) DO UPDATE SET
+                    repository=excluded.repository,
+                    pr_number=excluded.pr_number,
+                    head_sha=excluded.head_sha,
+                    base_sha=excluded.base_sha,
+                    target_sha=excluded.target_sha,
+                    priority=excluded.priority,
+                    state=excluded.state,
+                    reason=excluded.reason,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    mission_id,
+                    repository,
+                    pr_number,
+                    head_sha,
+                    base_sha,
+                    target_sha,
+                    int(priority),
+                    state.value,
+                    reason,
+                    now,
+                    now,
+                ),
+            )
+            row = conn.execute(
+                "SELECT id FROM merge_queue WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            assert row is not None
+            queue_id = int(row["id"])
+            self._event(
+                conn,
+                mission_id,
+                "MERGE_QUEUED",
+                None,
+                {
+                    "queue_id": queue_id,
+                    "repository": repository,
+                    "pr_number": pr_number,
+                    "head_sha": head_sha,
+                    "base_sha": base_sha,
+                    "target_sha": target_sha,
+                    "priority": priority,
+                    "state": state.value,
+                },
+            )
+            conn.execute("COMMIT")
+            return queue_id
+
+    def get_merge_queue_item(self, mission_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM merge_queue WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+
+    def list_merge_queue(self) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM merge_queue ORDER BY priority, id"
+                )
+            )
+
+    def set_merge_queue_state(
+        self,
+        mission_id: str,
+        state: MergeQueueState,
+        *,
+        reason: str | None = None,
+        actor: str = "merge-coordinator",
+    ) -> None:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            changed = conn.execute(
+                """
+                UPDATE merge_queue SET state=?, reason=?, updated_at=?
+                WHERE mission_id=?
+                """,
+                (state.value, reason, _iso_now(), mission_id),
+            ).rowcount
+            if not changed:
+                conn.execute("ROLLBACK")
+                raise KeyError(mission_id)
+            self._event(
+                conn,
+                mission_id,
+                "MERGE_QUEUE_STATE",
+                actor,
+                {"state": state.value, "reason": reason},
+            )
+            conn.execute("COMMIT")
+
+    def add_merge_dependency(
+        self,
+        mission_id: str,
+        depends_on_mission_id: str,
+        *,
+        required_merge_sha: str | None = None,
+    ) -> None:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            queue = conn.execute(
+                "SELECT id FROM merge_queue WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            if not queue:
+                conn.execute("ROLLBACK")
+                raise KeyError(mission_id)
+            conn.execute(
+                """
+                INSERT INTO merge_dependencies (
+                    queue_id, depends_on_mission_id, required_merge_sha, state, updated_at
+                ) VALUES (?, ?, ?, 'WAITING', ?)
+                ON CONFLICT(queue_id, depends_on_mission_id) DO UPDATE SET
+                    required_merge_sha=excluded.required_merge_sha,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    int(queue["id"]),
+                    depends_on_mission_id,
+                    required_merge_sha,
+                    _iso_now(),
+                ),
+            )
+            conn.execute("COMMIT")
+
+    def merge_dependencies_satisfied(self, mission_id: str) -> bool:
+        with self.connection() as conn:
+            queue = conn.execute(
+                "SELECT id FROM merge_queue WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            if not queue:
+                return True
+            rows = conn.execute(
+                """
+                SELECT d.depends_on_mission_id, d.required_merge_sha,
+                       r.merge_sha AS actual_merge_sha
+                FROM merge_dependencies d
+                LEFT JOIN merge_results r
+                  ON r.mission_id=d.depends_on_mission_id
+                 AND r.id=(SELECT max(r2.id) FROM merge_results r2
+                           WHERE r2.mission_id=d.depends_on_mission_id)
+                WHERE d.queue_id=?
+                """,
+                (int(queue["id"]),),
+            ).fetchall()
+            for row in rows:
+                actual = row["actual_merge_sha"]
+                required = row["required_merge_sha"]
+                if not actual:
+                    return False
+                if required and required != actual:
+                    return False
+            return True
+
+    def record_merge_result(
+        self,
+        mission_id: str,
+        *,
+        merge_sha: str,
+        merge_method: str,
+        actor: str,
+    ) -> int:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            queue = conn.execute(
+                "SELECT * FROM merge_queue WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            if not queue:
+                conn.execute("ROLLBACK")
+                raise KeyError(mission_id)
+            cursor = conn.execute(
+                """
+                INSERT INTO merge_results (
+                    queue_id, mission_id, repository, pr_number, head_sha,
+                    base_sha, merge_sha, merge_method, actor, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(queue["id"]),
+                    mission_id,
+                    queue["repository"],
+                    queue["pr_number"],
+                    queue["head_sha"],
+                    queue["base_sha"],
+                    merge_sha,
+                    merge_method,
+                    actor,
+                    _iso_now(),
+                ),
+            )
+            conn.execute(
+                "UPDATE merge_queue SET state=?, reason=NULL, updated_at=? WHERE id=?",
+                (MergeQueueState.MERGED.value, _iso_now(), int(queue["id"])),
+            )
+            conn.execute(
+                "UPDATE missions SET status=?, updated_at=? WHERE mission_id=?",
+                (MissionStatus.MERGED.value, _iso_now(), mission_id),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "MERGE_RECORDED",
+                actor,
+                {
+                    "merge_result_id": int(cursor.lastrowid),
+                    "merge_sha": merge_sha,
+                    "head_sha": queue["head_sha"],
+                    "merge_method": merge_method,
+                },
+            )
+            conn.execute("COMMIT")
+            return int(cursor.lastrowid)
+
+    def request_dispatch(
+        self,
+        mission_id: str,
+        *,
+        role: AgentRole,
+        reason: str,
+        head_sha: str | None,
+    ) -> int:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                """
+                SELECT id FROM dispatch_requests
+                WHERE mission_id=? AND role=? AND head_sha IS ? AND state IN (?, ?)
+                ORDER BY id DESC LIMIT 1
+                """,
+                (
+                    mission_id,
+                    role.value,
+                    head_sha,
+                    DispatchState.PENDING.value,
+                    DispatchState.RUNNING.value,
+                ),
+            ).fetchone()
+            if existing:
+                conn.execute("COMMIT")
+                return int(existing["id"])
+            cursor = conn.execute(
+                """
+                INSERT INTO dispatch_requests (
+                    mission_id, role, reason, head_sha, state, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mission_id,
+                    role.value,
+                    reason,
+                    head_sha,
+                    DispatchState.PENDING.value,
+                    now,
+                    now,
+                ),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "REDISPATCH_REQUESTED",
+                None,
+                {
+                    "dispatch_id": int(cursor.lastrowid),
+                    "role": role.value,
+                    "reason": reason,
+                    "head_sha": head_sha,
+                },
+            )
+            conn.execute("COMMIT")
+            return int(cursor.lastrowid)
+
+    def pending_dispatch_requests(
+        self,
+        *,
+        role: AgentRole | None = None,
+    ) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            if role is None:
+                return list(
+                    conn.execute(
+                        """
+                        SELECT * FROM dispatch_requests
+                        WHERE state=? ORDER BY id
+                        """,
+                        (DispatchState.PENDING.value,),
+                    )
+                )
+            return list(
+                conn.execute(
+                    """
+                    SELECT * FROM dispatch_requests
+                    WHERE state=? AND role=? ORDER BY id
+                    """,
+                    (DispatchState.PENDING.value, role.value),
+                )
+            )
+
+    def list_dispatch_requests(
+        self,
+        *,
+        states: tuple[DispatchState, ...] | None = None,
+    ) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            if not states:
+                return list(conn.execute("SELECT * FROM dispatch_requests ORDER BY id"))
+            values = tuple(state.value for state in states)
+            placeholders = ",".join("?" for _ in values)
+            return list(
+                conn.execute(
+                    f"SELECT * FROM dispatch_requests WHERE state IN ({placeholders}) ORDER BY id",
+                    values,
+                )
+            )
+
+    def update_dispatch_request(
+        self,
+        dispatch_id: int,
+        *,
+        state: DispatchState,
+        execution_id: str | None = None,
+    ) -> None:
+        with self.connection() as conn:
+            changed = conn.execute(
+                """
+                UPDATE dispatch_requests
+                SET state=?, execution_id=COALESCE(?, execution_id), updated_at=?
+                WHERE id=?
+                """,
+                (state.value, execution_id, _iso_now(), dispatch_id),
+            ).rowcount
+            if not changed:
+                raise KeyError(dispatch_id)
 
     def highest_approval(self, mission_id: str) -> ApprovalLevel:
         with self.connection() as conn:

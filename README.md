@@ -19,7 +19,10 @@ The foundation implements:
 - heartbeat and lease expiry;
 - deterministic takeover when a writer disappears;
 - structured checkpoints and handoffs;
-- action approval levels;
+- action approval levels plus exact-SHA review/verification/merge gates;
+- persistent conflict records and dependency-aware merge queue;
+- stale-approval invalidation whenever a mission head changes;
+- persisted Builder/Reviewer/Verifier redispatch requests;
 - persistent SQLite event ledger;
 - CLI for local automation;
 - adapter contract for Codex, Claude and future workers;
@@ -28,6 +31,11 @@ The foundation implements:
 ## Safety
 
 Mission Control never treats an agent self-report as certification.
+
+Direct numeric merge approval is intentionally disabled. Merge authorization
+requires an exact-SHA Reviewer approval, an independent exact-SHA Verifier
+approval, green protected checks, current control-plane evidence, satisfied
+dependencies, and the deterministic Merge Coordinator gate.
 
 Production effects, production database writes, live billing, live calling,
 live SMS/email and destructive Git operations require explicit policy approval.

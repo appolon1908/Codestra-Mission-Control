@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from mission_control.adapters.base import AgentExecution
 from mission_control.git_executor import RepositoryState, WorktreeAssignment
 from mission_control.lease import LeaseManager
-from mission_control.models import Mission, MissionStatus
+from mission_control.models import AgentRole, DispatchState, Mission, MissionStatus
 from mission_control.scheduler import MissionScheduler, WorkerSlot
 from mission_control.store import MissionStore
 
@@ -163,3 +163,65 @@ def test_daily_report_summarizes_statuses(tmp_path):
     assert report["status_counts"]["READY"] == 1
     assert report["status_counts"]["IN_REVIEW"] == 1
     assert "M-1: IN_REVIEW" in report["reminders"]
+
+
+def test_scheduler_honors_persisted_reviewer_redispatch(tmp_path):
+    store = setup_store(tmp_path, 1)
+    store.update_mission_workspace(
+        "M-0",
+        branch="mission/m-0",
+        worktree="/worktrees/M-0",
+        base_sha="abc123",
+        head_sha="abc123",
+    )
+    store.set_status("M-0", MissionStatus.IN_REVIEW)
+    dispatch_id = store.request_dispatch(
+        "M-0",
+        role=AgentRole.REVIEWER,
+        reason="exact-head review required",
+        head_sha="abc123",
+    )
+    scheduler = MissionScheduler(
+        store,
+        workers=(WorkerSlot("claude-review", "claude", role=AgentRole.REVIEWER),),
+        adapters={"claude": FakeAdapter("claude")},
+        worktree_root=tmp_path / "worktrees",
+        git=FakeGit(),
+    )
+
+    snapshot = scheduler.tick()
+
+    assert len(snapshot.assigned) == 1
+    assert snapshot.assigned[0].agent_id == "claude-review"
+    lease = LeaseManager(store).current("M-0")
+    assert lease["role"] == AgentRole.REVIEWER.value
+    rows = store.list_dispatch_requests(states=(DispatchState.RUNNING,))
+    assert len(rows) == 1
+    assert rows[0]["id"] == dispatch_id
+
+
+def test_scheduler_does_not_count_reviewer_as_active_writer(tmp_path):
+    store = setup_store(tmp_path, 1)
+    store.update_mission_workspace(
+        "M-0",
+        branch="mission/m-0",
+        worktree="/worktrees/M-0",
+        base_sha="abc123",
+        head_sha="abc123",
+    )
+    store.set_status("M-0", MissionStatus.IN_REVIEW)
+    store.request_dispatch(
+        "M-0",
+        role=AgentRole.REVIEWER,
+        reason="review",
+        head_sha="abc123",
+    )
+    scheduler = MissionScheduler(
+        store,
+        workers=(WorkerSlot("reviewer", "claude", role=AgentRole.REVIEWER),),
+        adapters={"claude": FakeAdapter("claude")},
+        worktree_root=tmp_path / "worktrees",
+        git=FakeGit(),
+    )
+    snapshot = scheduler.tick()
+    assert snapshot.active_writers == 0

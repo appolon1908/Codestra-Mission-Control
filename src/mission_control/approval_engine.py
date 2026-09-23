@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from .lease import LeaseManager
-from .models import ApprovalLevel
+from .models import ApprovalGate, ApprovalLevel
 from .policy import ACTION_LEVELS, ApprovalPolicy
 from .store import MissionStore
 
@@ -51,11 +51,34 @@ class ApprovalEngine:
         current = self.leases.current(mission_id)
         writer = current["agent_id"] if current else None
 
-        if level >= ApprovalLevel.MERGE and writer and context.actor == writer:
-            raise ApprovalDenied("independent reviewer required; writer cannot self-approve")
+        if level == ApprovalLevel.MERGE:
+            raise ApprovalDenied(
+                "merge authorization is exact-SHA and coordinator-only; "
+                "use MergeCoordinator review/verification/merge gates"
+            )
 
-        if level >= ApprovalLevel.MERGE and not context.ci_green:
-            raise ApprovalDenied("merge-or-higher approval requires green CI")
+        if level > ApprovalLevel.MERGE and writer and context.actor == writer:
+            raise ApprovalDenied("independent approval required; writer cannot self-approve")
+
+        if level > ApprovalLevel.MERGE and not context.ci_green:
+            raise ApprovalDenied("staging-or-higher approval requires green CI")
+
+        if level > ApprovalLevel.MERGE:
+            mission = self.store.get_mission(mission_id)
+            head_sha = mission["head_sha"] if mission else None
+            merge_authorization = (
+                self.store.latest_valid_sha_approval(
+                    mission_id,
+                    ApprovalGate.MERGE_AUTHORIZATION,
+                    head_sha,
+                )
+                if head_sha
+                else None
+            )
+            if not merge_authorization:
+                raise ApprovalDenied(
+                    "staging-or-higher approval requires exact-SHA Merge Coordinator authorization"
+                )
 
         if level >= ApprovalLevel.STAGING_MUTATION and not context.certification_passed:
             raise ApprovalDenied("staging-or-higher approval requires certification evidence")

@@ -93,6 +93,20 @@ if workflow is not None:
                         start_to_close_timeout=timedelta(minutes=2),
                         retry_policy=retry,
                     )
+                elif action == "VERIFY":
+                    await workflow.execute_activity(
+                        "request_verification",
+                        mission_id,
+                        start_to_close_timeout=timedelta(minutes=2),
+                        retry_policy=retry,
+                    )
+                elif action == "MERGE_COORDINATE":
+                    await workflow.execute_activity(
+                        "coordinate_merge",
+                        mission_id,
+                        start_to_close_timeout=timedelta(minutes=2),
+                        retry_policy=retry,
+                    )
 
                 if self._last_signal:
                     signal_payload = dict(self._last_signal)
