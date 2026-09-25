@@ -5,6 +5,8 @@ import argparse
 import json
 from pathlib import Path
 
+from .agent_telemetry import AgentTelemetryAPI
+from .checkpoint_dispatcher import CheckpointDispatcher
 from .controller import MissionController
 from .github_merge import GitHubMergeExecutor
 from .handoff import compile_next_task, write_next_task
@@ -77,6 +79,14 @@ def main() -> None:
     checkpoint.add_argument("--tests-json", default="{}")
     checkpoint.add_argument("--blocker", action="append", default=[])
     checkpoint.add_argument("--request-next-task", action="store_true")
+    checkpoint.add_argument(
+        "--reconcile",
+        action="store_true",
+        help="immediately derive BLOCKED/REWORK/REVIEW state and NEXT_TASK.md",
+    )
+
+    reconcile_checkpoint = sub.add_parser("reconcile-checkpoint")
+    reconcile_checkpoint.add_argument("--mission", required=True)
 
     approve = sub.add_parser("approve")
     approve.add_argument("--mission", required=True)
@@ -164,6 +174,10 @@ def main() -> None:
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
+    serve_agent_api = sub.add_parser("serve-agent-api")
+    serve_agent_api.add_argument("--host", default="127.0.0.1")
+    serve_agent_api.add_argument("--port", type=int, default=8766)
+
     args = parser.parse_args()
     store = _store(args.db)
 
@@ -219,18 +233,47 @@ def main() -> None:
             blockers=args.blocker,
             next_task_requested=args.request_next_task,
         )
-        result: dict[str, object] = {"ok": True, "checkpoint_id": checkpoint_id}
-        if args.request_next_task:
+        response: dict[str, object] = {
+            "ok": True,
+            "checkpoint_id": checkpoint_id,
+        }
+        if args.request_next_task and not args.reconcile:
             mission = store.get_mission(args.mission)
-            checkpoint = store.latest_checkpoint(args.mission)
-            if not mission or not checkpoint:
+            latest = store.latest_checkpoint(args.mission)
+            if not mission or not latest:
                 raise RuntimeError("checkpoint persisted but readback failed")
             worktree = mission["worktree"]
             if not worktree:
                 raise RuntimeError("next-task request requires a mission worktree")
-            task = compile_next_task(dict(mission), dict(checkpoint))
-            result["next_task_path"] = str(write_next_task(worktree, task))
-        print(json.dumps(result, sort_keys=True))
+            task = compile_next_task(dict(mission), dict(latest))
+            response["next_task_path"] = str(write_next_task(worktree, task))
+        if args.reconcile:
+            decision = CheckpointDispatcher(store).process_latest(args.mission)
+            response["decision"] = {
+                "action": decision.action.value,
+                "status": decision.status.value,
+                "reason": decision.reason,
+                "next_action": decision.next_action,
+                "head_sha": decision.head_sha,
+            }
+        print(json.dumps(response, sort_keys=True))
+        return
+
+    if args.command == "reconcile-checkpoint":
+        decision = CheckpointDispatcher(store).process_latest(args.mission)
+        print(
+            json.dumps(
+                {
+                    "mission_id": decision.mission_id,
+                    "action": decision.action.value,
+                    "status": decision.status.value,
+                    "reason": decision.reason,
+                    "next_action": decision.next_action,
+                    "head_sha": decision.head_sha,
+                },
+                sort_keys=True,
+            )
+        )
         return
 
     if args.command == "approve":
@@ -477,6 +520,30 @@ def main() -> None:
 
     if args.command == "expired":
         print(json.dumps({"expired": leases.expired_missions()}, sort_keys=True))
+        return
+
+    if args.command == "serve-agent-api":
+        server = AgentTelemetryAPI(store).server(args.host, args.port)
+        host, port = server.server_address
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "service": "agent-intelligence-api",
+                    "host": host,
+                    "port": port,
+                    "api_version": "v1",
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.server_close()
         return
 
     if args.command == "repositories":
