@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .controller import MissionController
 from .github_merge import GitHubMergeExecutor
+from .handoff import compile_next_task, write_next_task
 from .lease import LeaseManager
 from .merge_coordinator import MergeCandidate, MergeCoordinator
 from .models import (
@@ -218,7 +219,18 @@ def main() -> None:
             blockers=args.blocker,
             next_task_requested=args.request_next_task,
         )
-        print(json.dumps({"ok": True, "checkpoint_id": checkpoint_id}))
+        result: dict[str, object] = {"ok": True, "checkpoint_id": checkpoint_id}
+        if args.request_next_task:
+            mission = store.get_mission(args.mission)
+            checkpoint = store.latest_checkpoint(args.mission)
+            if not mission or not checkpoint:
+                raise RuntimeError("checkpoint persisted but readback failed")
+            worktree = mission["worktree"]
+            if not worktree:
+                raise RuntimeError("next-task request requires a mission worktree")
+            task = compile_next_task(dict(mission), dict(checkpoint))
+            result["next_task_path"] = str(write_next_task(worktree, task))
+        print(json.dumps(result, sort_keys=True))
         return
 
     if args.command == "approve":

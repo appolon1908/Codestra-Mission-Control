@@ -116,7 +116,15 @@ class LocalCheckpointAdapter(ControlSurfaceAdapter):
             newline="\n",
         )
         temp.replace(target)
-        return self.read_state(checkpoint.mission_id)
+        state = self.read_state(checkpoint.mission_id)
+        return SurfaceObservation(
+            state.surface,
+            state.available,
+            state.status,
+            state.head_sha,
+            state.error,
+            checkpoint.status,
+        )
 
 
 class GitHubCheckpointAdapter(ControlSurfaceAdapter):
@@ -178,7 +186,14 @@ class GitHubCheckpointAdapter(ControlSurfaceAdapter):
                 self._headers(),
                 {"body": _checkpoint_text(checkpoint)},
             )
-            return state
+            return SurfaceObservation(
+                state.surface,
+                state.available,
+                state.status,
+                state.head_sha,
+                state.error,
+                checkpoint.status,
+            )
         except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
                 Surface.GITHUB,
@@ -264,6 +279,7 @@ class LinearCheckpointAdapter(ControlSurfaceAdapter):
                 True,
                 checkpoint.status,
                 checkpoint.head_sha,
+                checkpoint_status=checkpoint.status,
             )
         except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
@@ -344,6 +360,7 @@ class NotionCheckpointAdapter(ControlSurfaceAdapter):
                 True,
                 checkpoint.status,
                 checkpoint.head_sha,
+                checkpoint_status=checkpoint.status,
             )
         except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(

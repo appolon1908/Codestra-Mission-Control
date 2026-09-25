@@ -33,6 +33,7 @@ class SurfaceObservation:
     status: str
     head_sha: str | None = None
     error: str | None = None
+    checkpoint_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,16 @@ def reconcile(
             item = by_surface.get(surface)
             if item and item.available and item.head_sha and item.head_sha != checkpoint.head_sha:
                 stale_list.append(surface)
-    stale = tuple(stale_list)
+    for surface in required:
+        item = by_surface.get(surface)
+        if (
+            item
+            and item.available
+            and item.checkpoint_status
+            and item.checkpoint_status != checkpoint.status
+        ):
+            stale_list.append(surface)
+    stale = tuple(sorted(set(stale_list), key=lambda item: item.value))
 
     if missing or failed or stale:
         reasons: list[str] = []
@@ -93,7 +103,7 @@ def reconcile(
         if failed:
             reasons.append("failed=" + ",".join(x.value for x in failed))
         if stale:
-            reasons.append("stale_sha=" + ",".join(x.value for x in stale))
+            reasons.append("stale=" + ",".join(x.value for x in stale))
         return SyncDecision(
             SyncState.BLOCKED,
             False,
