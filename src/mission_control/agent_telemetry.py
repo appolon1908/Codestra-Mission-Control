@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import os
 import socket
@@ -87,11 +88,13 @@ class AgentTelemetryEmitter:
 
 
 class AgentTelemetryAPI:
-    def __init__(self, store: MissionStore) -> None:
+    def __init__(self, store: MissionStore, *, bearer_token: str | None = None) -> None:
         self.store = store
+        self.bearer_token = bearer_token
 
     def handler(self) -> type[BaseHTTPRequestHandler]:
         store = self.store
+        bearer_token = self.bearer_token
 
         class Handler(BaseHTTPRequestHandler):
             server_version = "CodestraAgentTelemetry/1.0"
@@ -101,8 +104,24 @@ class AgentTelemetryAPI:
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Request-ID", str(uuid.uuid4()))
                 self.end_headers()
                 self.wfile.write(body)
+
+            def _authorized(self) -> bool:
+                if bearer_token is None:
+                    return True
+                supplied = self.headers.get("Authorization", "")
+                expected = f"Bearer {bearer_token}"
+                return hmac.compare_digest(supplied, expected)
+
+            def _require_authorized(self) -> bool:
+                if self._authorized():
+                    return True
+                self._json(401, {"error": "unauthorized"})
+                return False
 
             def do_GET(self) -> None:
                 parsed = urlparse(self.path)
@@ -110,6 +129,8 @@ class AgentTelemetryAPI:
                     self._json(200, {"status": "ok"})
                     return
                 if parsed.path == "/platform/v1/agents/launch-events":
+                    if not self._require_authorized():
+                        return
                     query = parse_qs(parsed.query)
                     try:
                         limit = min(500, max(1, int(query.get("limit", ["100"])[0])))
@@ -127,6 +148,12 @@ class AgentTelemetryAPI:
                 parsed = urlparse(self.path)
                 if parsed.path != "/platform/v1/agents/launch-events":
                     self._json(404, {"error": "not_found"})
+                    return
+                if not self._require_authorized():
+                    return
+                content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                if content_type != "application/json":
+                    self._json(415, {"error": "unsupported_media_type"})
                     return
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
@@ -178,7 +205,15 @@ def main(argv: list[str] | None = None) -> int:
 
     store = MissionStore(Path(args.db).resolve())
     store.initialize()
-    server = AgentTelemetryAPI(store).server(host=args.host, port=args.port)
+    bearer_token = os.getenv("MISSION_CONTROL_AGENT_TELEMETRY_TOKEN")
+    if args.host not in {"127.0.0.1", "::1", "localhost"} and not bearer_token:
+        raise SystemExit(
+            "MISSION_CONTROL_AGENT_TELEMETRY_TOKEN is required for non-loopback binding"
+        )
+    server = AgentTelemetryAPI(store, bearer_token=bearer_token).server(
+        host=args.host,
+        port=args.port,
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

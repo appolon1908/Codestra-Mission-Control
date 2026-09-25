@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+import urllib.error
 import urllib.request
 
 from mission_control.adapters.base import AgentAssignment, AgentExecution
@@ -124,6 +125,79 @@ def test_health_endpoint_is_available_on_runtime_server(tmp_path):
             body = json.load(response)
         assert response.status == 200
         assert body == {"status": "ok"}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_api_requires_bearer_token_when_configured(tmp_path):
+    store = make_store(tmp_path)
+    server = AgentTelemetryAPI(store, bearer_token="secret-token").server()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    url = f"http://{host}:{port}/platform/v1/agents/launch-events"
+
+    try:
+        try:
+            urllib.request.urlopen(url, timeout=3)
+            raise AssertionError("unauthorized request unexpectedly succeeded")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": "Bearer secret-token"},
+        )
+        with urllib.request.urlopen(req, timeout=3) as response:
+            body = json.load(response)
+        assert response.status == 200
+        assert body["count"] == 0
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_post_rejects_non_json_and_sets_security_headers(tmp_path):
+    store = make_store(tmp_path)
+    server = AgentTelemetryAPI(store).server()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    url = f"http://{host}:{port}/platform/v1/agents/launch-events"
+
+    req = urllib.request.Request(
+        url,
+        data=b"not-json",
+        headers={"Content-Type": "text/plain"},
+        method="POST",
+    )
+    try:
+        try:
+            urllib.request.urlopen(req, timeout=3)
+            raise AssertionError("unsupported media type unexpectedly succeeded")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 415
+            assert exc.headers["Cache-Control"] == "no-store"
+            assert exc.headers["X-Content-Type-Options"] == "nosniff"
+            assert exc.headers["X-Request-ID"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_health_response_sets_security_headers(tmp_path):
+    store = make_store(tmp_path)
+    server = AgentTelemetryAPI(store).server()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/healthz", timeout=3) as response:
+            assert response.headers["Cache-Control"] == "no-store"
+            assert response.headers["X-Content-Type-Options"] == "nosniff"
+            assert response.headers["X-Request-ID"]
     finally:
         server.shutdown()
         server.server_close()
