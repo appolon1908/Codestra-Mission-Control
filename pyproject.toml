@@ -15,6 +15,7 @@ dev = ["pytest>=8,<10", "ruff>=0.8,<1"]
 
 [project.scripts]
 codestra-mission-control = "mission_control.cli:main"
+codestra-agent-telemetry = "mission_control.agent_telemetry:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

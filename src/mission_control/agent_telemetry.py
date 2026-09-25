@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import socket
@@ -7,6 +8,7 @@ import urllib.request
 import uuid
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .adapters.base import AgentAssignment, AgentExecution
@@ -58,9 +60,18 @@ class AgentTelemetryEmitter:
             "complexity_class": complexity_class,
             "state": execution.state,
         }
+        payload["delivery_state"] = "LOCAL_ONLY"
         self.store.record_agent_launch(payload)
         if self.endpoint:
-            self._post(payload)
+            try:
+                self._post(payload)
+            except Exception as exc:  # noqa: BLE001 - telemetry must not break dispatch
+                payload["delivery_state"] = "FAILED"
+                payload["delivery_error_type"] = type(exc).__name__
+                self.store.record_agent_launch(payload)
+            else:
+                payload["delivery_state"] = "DELIVERED"
+                self.store.record_agent_launch(payload)
         return payload
 
     def _post(self, payload: dict[str, object]) -> None:
@@ -156,3 +167,26 @@ class AgentTelemetryAPI:
 
     def server(self, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
         return ThreadingHTTPServer((host, port), self.handler())
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Codestra Mission Control agent telemetry API")
+    parser.add_argument("--db", default=".runtime/mission-control.db")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8766)
+    args = parser.parse_args(argv)
+
+    store = MissionStore(Path(args.db).resolve())
+    store.initialize()
+    server = AgentTelemetryAPI(store).server(host=args.host, port=args.port)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
