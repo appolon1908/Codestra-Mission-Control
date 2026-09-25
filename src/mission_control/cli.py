@@ -10,12 +10,36 @@ from .lease import LeaseManager
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
 from .policy import ApprovalPolicy
 from .store import MissionStore
+from .worker_node import (
+    NodeNotFound,
+    NodeValidationError,
+    WorkerLane,
+    WorkerNodeRegistry,
+    probe_local_capabilities,
+)
 
 
 def _store(path: str) -> MissionStore:
     store = MissionStore(Path(path))
     store.initialize()
     return store
+
+
+def _provider_probes(store: MissionStore, runtime_root: Path, providers: list[str]) -> dict:
+    from .adapters.claude import ClaudeAdapter
+    from .adapters.codex import CodexAdapter
+
+    adapter_types = {"claude": ClaudeAdapter, "codex": CodexAdapter}
+    probes: dict = {}
+    for provider in providers:
+        adapter_type = adapter_types[provider]
+
+        def probe(provider: str = provider, adapter_type=adapter_type) -> dict:
+            adapter = adapter_type(store, runtime_root=runtime_root / provider)
+            return adapter.auth_status()
+
+        probes[provider] = probe
+    return probes
 
 
 def main() -> None:
@@ -78,6 +102,39 @@ def main() -> None:
 
     sub.add_parser("expired")
     sub.add_parser("repositories")
+
+    node_register = sub.add_parser("node-register")
+    node_register.add_argument("--node", required=True)
+    node_register.add_argument("--capabilities-json", required=True)
+
+    node_probe = sub.add_parser("node-probe")
+    node_probe.add_argument("--node", required=True)
+    node_probe.add_argument(
+        "--lane",
+        action="append",
+        choices=[lane.value for lane in WorkerLane],
+        default=[],
+    )
+    node_probe.add_argument(
+        "--provider", action="append", choices=["claude", "codex"], default=[]
+    )
+    node_probe.add_argument("--worktree-root", required=True)
+    node_probe.add_argument("--tailnet-dns")
+    node_probe.add_argument("--max-parallel", type=int, default=3)
+    node_probe.add_argument("--runtime-root", default=".runtime/worker-node")
+    node_probe.add_argument("--skip-auth", action="store_true")
+
+    node_heartbeat = sub.add_parser("node-heartbeat")
+    node_heartbeat.add_argument("--node", required=True)
+
+    node_status = sub.add_parser("node-status")
+    node_status.add_argument("--node", required=True)
+
+    sub.add_parser("nodes")
+
+    node_api = sub.add_parser("serve-worker-node-api")
+    node_api.add_argument("--host", default="127.0.0.1")
+    node_api.add_argument("--port", type=int, default=8791)
 
     args = parser.parse_args()
     store = _store(args.db)
@@ -199,6 +256,77 @@ def main() -> None:
             )
         )
         return
+
+    if args.command.startswith("node") or args.command == "serve-worker-node-api":
+        registry = WorkerNodeRegistry(store)
+        try:
+            payload = _node_command(args, store, registry)
+        except NodeValidationError as exc:
+            raise SystemExit(json.dumps({"error": "invalid_worker_node", "errors": exc.errors}))
+        except NodeNotFound as exc:
+            raise SystemExit(json.dumps({"error": "node_not_found", "node_id": exc.args[0]}))
+        if payload is not None:
+            print(json.dumps(payload, sort_keys=True))
+        return
+
+
+def _node_command(args, store: MissionStore, registry: WorkerNodeRegistry) -> dict | None:
+    if args.command == "node-register":
+        return registry.register(args.node, json.loads(args.capabilities_json))
+
+    if args.command == "node-probe":
+        body = probe_local_capabilities(
+            args.node,
+            lanes=args.lane or [WorkerLane.BUILDER.value],
+            providers=args.provider or ["claude", "codex"],
+            worktree_root=args.worktree_root,
+            tailnet_dns=args.tailnet_dns,
+            max_parallel_writers=args.max_parallel,
+        )
+        registry.register(args.node, body)
+        registry.heartbeat(args.node)
+        if not args.skip_auth:
+            registry.probe_auth(
+                args.node,
+                _provider_probes(store, Path(args.runtime_root), body["providers"]),
+            )
+        return registry.snapshot(args.node)
+
+    if args.command == "node-heartbeat":
+        at = registry.heartbeat(args.node)
+        return {
+            "node_id": args.node,
+            "last_heartbeat_at": at,
+            "readiness": registry.readiness(args.node).as_payload(),
+        }
+
+    if args.command == "node-status":
+        return registry.snapshot(args.node)
+
+    if args.command == "nodes":
+        items = registry.list()
+        return {
+            "count": len(items),
+            "implementation_ready": sum(
+                1 for item in items if item["readiness"]["implementation_ready"]
+            ),
+            "items": items,
+        }
+
+    if args.command == "serve-worker-node-api":
+        from .worker_node_api import WorkerNodeAPI
+
+        server = WorkerNodeAPI(store).server(args.host, args.port)
+        print(
+            json.dumps({"ok": True, "host": args.host, "port": server.server_address[1]}),
+            flush=True,
+        )
+        try:
+            server.serve_forever()
+        finally:
+            server.server_close()
+        return None
+    return None
 
 
 if __name__ == "__main__":
