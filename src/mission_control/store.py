@@ -122,8 +122,33 @@ class MissionStore:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS inventory_scans (
+                    scan_id TEXT PRIMARY KEY,
+                    scanned_at TEXT NOT NULL,
+                    complete INTEGER NOT NULL,
+                    summary_json TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS inventory_observations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scan_id TEXT NOT NULL REFERENCES inventory_scans(scan_id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL,
+                    subject_key TEXT NOT NULL,
+                    repository TEXT,
+                    status TEXT NOT NULL,
+                    flags_json TEXT NOT NULL,
+                    details_json TEXT NOT NULL,
+                    error_code TEXT,
+                    error_message TEXT,
+                    observed_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_events_mission
                     ON events(mission_id, id);
+                CREATE INDEX IF NOT EXISTS idx_inventory_observations_subject
+                    ON inventory_observations(kind, subject_key, id);
+                CREATE INDEX IF NOT EXISTS idx_inventory_observations_scan
+                    ON inventory_observations(scan_id, id);
                 CREATE INDEX IF NOT EXISTS idx_checkpoints_mission
                     ON checkpoints(mission_id, id);
                 """
@@ -517,6 +542,85 @@ class MissionStore:
                 (mission_id,),
             ).fetchone()
             return ApprovalLevel(int(row["level"] or 0))
+
+    def list_leases(self) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(conn.execute("SELECT * FROM leases ORDER BY mission_id"))
+
+    def record_inventory_scan(
+        self,
+        scan_id: str,
+        *,
+        scanned_at: str,
+        complete: bool,
+        summary: dict,
+        observations: list[dict],
+    ) -> None:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO inventory_scans (scan_id, scanned_at, complete, summary_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (scan_id, scanned_at, int(complete), json.dumps(summary, sort_keys=True)),
+            )
+            conn.executemany(
+                """
+                INSERT INTO inventory_observations (
+                    scan_id, kind, subject_key, repository, status, flags_json,
+                    details_json, error_code, error_message, observed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        scan_id,
+                        item["kind"],
+                        item["key"],
+                        item.get("repository"),
+                        item["status"],
+                        json.dumps(list(item.get("flags") or []), sort_keys=True),
+                        json.dumps(item.get("details") or {}, sort_keys=True),
+                        (item.get("error") or {}).get("code"),
+                        (item.get("error") or {}).get("message"),
+                        item["observed_at"],
+                    )
+                    for item in observations
+                ],
+            )
+            conn.execute("COMMIT")
+
+    def latest_inventory_scan(self) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM inventory_scans ORDER BY scanned_at DESC, rowid DESC LIMIT 1"
+            ).fetchone()
+
+    def inventory_observations(self, scan_id: str) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM inventory_observations WHERE scan_id=? ORDER BY id",
+                    (scan_id,),
+                )
+            )
+
+    def last_verified_inventory_observation(
+        self,
+        kind: str,
+        subject_key: str,
+    ) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM inventory_observations
+                WHERE kind=? AND subject_key=? AND error_code IS NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (kind, subject_key),
+            ).fetchone()
 
     def events(self, mission_id: str) -> list[sqlite3.Row]:
         with self.connection() as conn:

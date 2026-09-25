@@ -22,6 +22,7 @@ class TailnetNode:
     ipv4: str | None
     online: bool
     roles: tuple[NodeRole, ...] = ()
+    last_seen: str | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ def normalize_status(payload: dict[str, Any]) -> list[TailnetNode]:
                 dns_name=raw.get("DNSName"),
                 ipv4=ipv4,
                 online=bool(raw.get("Online", True)),
+                last_seen=raw.get("LastSeen"),
             )
         )
     dedup: dict[str, TailnetNode] = {}
