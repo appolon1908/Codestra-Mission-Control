@@ -6,8 +6,21 @@ import json
 from pathlib import Path
 
 from .controller import MissionController
+from .fabric_api import FabricAPI, FabricRuntime, health_payload, policy_payload
 from .lease import LeaseManager
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
+from .network_fabric import (
+    DEFAULT_MAX_SNAPSHOT_AGE_SECONDS,
+    DEFAULT_OFFLINE_STALE_AFTER_SECONDS,
+    FabricConfigError,
+    FabricState,
+    evaluate_health,
+    load_inventory_file,
+    load_policy_file,
+    read_status_command,
+    read_status_file,
+    validate_policy,
+)
 from .policy import ApprovalPolicy
 from .store import MissionStore
 
@@ -16,6 +29,64 @@ def _store(path: str) -> MissionStore:
     store = MissionStore(Path(path))
     store.initialize()
     return store
+
+
+def _fabric_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--inventory", default="config/tailscale.nodes.json")
+    parser.add_argument(
+        "--status-json",
+        help="read a captured `tailscale status --json` file instead of running the CLI",
+    )
+    parser.add_argument("--tailscale-bin", default="tailscale")
+    parser.add_argument("--max-snapshot-age", type=int, default=DEFAULT_MAX_SNAPSHOT_AGE_SECONDS)
+    parser.add_argument(
+        "--offline-stale-after", type=int, default=DEFAULT_OFFLINE_STALE_AFTER_SECONDS
+    )
+
+
+def _status_reader(args: argparse.Namespace):
+    if args.status_json:
+        return lambda: read_status_file(args.status_json)
+    return lambda: read_status_command(binary=args.tailscale_bin)
+
+
+def _run_fabric_command(args: argparse.Namespace) -> None:
+    if args.command == "fabric-policy-validate":
+        result = validate_policy(load_policy_file(args.policy))
+        print(json.dumps(policy_payload(result), sort_keys=True))
+        raise SystemExit(0 if result.valid else 2)
+
+    inventory = load_inventory_file(args.inventory)
+    if args.command == "fabric-health":
+        report = evaluate_health(
+            inventory,
+            _status_reader(args)(),
+            max_snapshot_age_seconds=args.max_snapshot_age,
+            offline_stale_after_seconds=args.offline_stale_after,
+        )
+        print(json.dumps(health_payload(report), sort_keys=True))
+        raise SystemExit(0 if report.state is FabricState.HEALTHY else 2)
+
+    runtime = FabricRuntime(
+        inventory,
+        load_policy_file(args.policy),
+        _status_reader(args),
+        max_snapshot_age_seconds=args.max_snapshot_age,
+        offline_stale_after_seconds=args.offline_stale_after,
+    )
+    server = FabricAPI(runtime).server(args.host, args.port)
+    host, port = server.server_address[:2]
+    print(
+        json.dumps(
+            {"ok": True, "service": "mission-control-fabric-api", "url": f"http://{host}:{port}"}
+        )
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
 
 
 def main() -> None:
@@ -79,7 +150,26 @@ def main() -> None:
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
+    fabric_health = sub.add_parser("fabric-health")
+    _fabric_arguments(fabric_health)
+
+    fabric_policy = sub.add_parser("fabric-policy-validate")
+    fabric_policy.add_argument("--policy", default="config/tailscale.policy-plan.json")
+
+    fabric_api = sub.add_parser("serve-fabric-api")
+    _fabric_arguments(fabric_api)
+    fabric_api.add_argument("--policy", default="config/tailscale.policy-plan.json")
+    fabric_api.add_argument("--host", default="127.0.0.1")
+    fabric_api.add_argument("--port", type=int, default=8791)
+
     args = parser.parse_args()
+    if args.command in {"fabric-health", "fabric-policy-validate", "serve-fabric-api"}:
+        try:
+            _run_fabric_command(args)
+        except FabricConfigError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
+            raise SystemExit(2) from None
+        return
     store = _store(args.db)
 
     if args.command == "init":
