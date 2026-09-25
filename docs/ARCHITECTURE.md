@@ -36,3 +36,16 @@ base SHA, last known HEAD, dirty state, checkpoint, test results, blockers and a
 
 No agent can self-authorize production effects. Production actions require an explicit
 human approval record at PRODUCTION_EFFECT.
+
+## Cross-surface sync (CORE-SYNC-01)
+
+Each surface (local, Linear, GitHub, Notion) is observed and persisted independently in
+`surface_sync_state` with `observed_at`, `last_success_at`, `last_error_at` and the last
+known head SHA. Readback classifies every source as FRESH, STALE, UNREACHABLE or ERROR,
+reports drift from the checkpoint SHA and conflicts (divergent heads, terminal status on an
+active mission, ownership refusal, cross-surface reports), and lists the surfaces that
+still reconcile. One unreachable source blocks completion but never hides the state of the
+reachable ones. Fanout writes only for the current writer-lease owner, with one adapter per
+surface.
+
+CLI: `sync-observe` (lease owner only) and `sync-readback`.
