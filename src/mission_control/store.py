@@ -113,6 +113,34 @@ class MissionStore:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS dispatcher_lanes (
+                    lane_id TEXT PRIMARY KEY,
+                    current_mission_id TEXT,
+                    assignment_seq INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS dispatcher_assignments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lane_id TEXT NOT NULL REFERENCES dispatcher_lanes(lane_id) ON DELETE CASCADE,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    assigned_at TEXT NOT NULL,
+                    assigned_by TEXT NOT NULL,
+                    repository TEXT NOT NULL,
+                    base_sha TEXT NOT NULL,
+                    worktree TEXT NOT NULL,
+                    goal TEXT NOT NULL,
+                    acceptance_json TEXT NOT NULL,
+                    dependencies_json TEXT NOT NULL,
+                    do_not_touch_json TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    UNIQUE(lane_id, sequence)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_dispatcher_assignments_lane
+                    ON dispatcher_assignments(lane_id, sequence DESC);
+
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mission_id TEXT NOT NULL,
