@@ -122,8 +122,44 @@ class MissionStore:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS watchdog_escalations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mission_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    agent_id TEXT,
+                    level INTEGER NOT NULL,
+                    state TEXT NOT NULL,
+                    detail_json TEXT NOT NULL,
+                    delivery TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    acknowledged_by TEXT,
+                    acknowledged_at TEXT,
+                    resolved_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS watchdog_dispatches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mission_id TEXT NOT NULL,
+                    agent_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    execution_id TEXT,
+                    takeover INTEGER NOT NULL DEFAULT 0,
+                    predecessor_agent_id TEXT,
+                    predecessor_execution_id TEXT,
+                    checkpoint_head TEXT,
+                    reason TEXT,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_events_mission
                     ON events(mission_id, id);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_watchdog_escalations_active
+                    ON watchdog_escalations(mission_id, kind)
+                    WHERE state != 'RESOLVED';
+                CREATE INDEX IF NOT EXISTS idx_watchdog_dispatches_mission
+                    ON watchdog_dispatches(mission_id, id);
                 CREATE INDEX IF NOT EXISTS idx_checkpoints_mission
                     ON checkpoints(mission_id, id);
                 """
@@ -517,6 +553,298 @@ class MissionStore:
                 (mission_id,),
             ).fetchone()
             return ApprovalLevel(int(row["level"] or 0))
+
+    def list_leases(self) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(conn.execute("SELECT * FROM leases ORDER BY mission_id"))
+
+    def latest_agent_execution_for(
+        self,
+        mission_id: str,
+        agent_id: str,
+    ) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM agent_executions
+                WHERE mission_id=? AND agent_id=?
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (mission_id, agent_id),
+            ).fetchone()
+
+    def record_watchdog_dispatch(
+        self,
+        *,
+        mission_id: str,
+        agent_id: str,
+        provider: str,
+        state: str,
+        execution_id: str | None,
+        takeover: bool,
+        predecessor_agent_id: str | None,
+        predecessor_execution_id: str | None,
+        checkpoint_head: str | None,
+        reason: str | None,
+    ) -> int:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                """
+                INSERT INTO watchdog_dispatches (
+                    mission_id, agent_id, provider, state, execution_id, takeover,
+                    predecessor_agent_id, predecessor_execution_id, checkpoint_head,
+                    reason, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mission_id,
+                    agent_id,
+                    provider,
+                    state,
+                    execution_id,
+                    int(takeover),
+                    predecessor_agent_id,
+                    predecessor_execution_id,
+                    checkpoint_head,
+                    reason,
+                    _iso_now(),
+                ),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "SUCCESSOR_DISPATCHED" if takeover else "WATCHDOG_DISPATCHED",
+                agent_id,
+                {
+                    "dispatch_id": int(cursor.lastrowid),
+                    "state": state,
+                    "execution_id": execution_id,
+                    "predecessor_agent_id": predecessor_agent_id,
+                    "predecessor_execution_id": predecessor_execution_id,
+                    "checkpoint_head": checkpoint_head,
+                    "reason": reason,
+                },
+            )
+            conn.execute("COMMIT")
+            return int(cursor.lastrowid)
+
+    def list_watchdog_dispatches(
+        self,
+        *,
+        mission_id: str | None = None,
+        takeover_only: bool = False,
+        limit: int = 100,
+    ) -> list[sqlite3.Row]:
+        clauses: list[str] = []
+        values: list[object] = []
+        if mission_id:
+            clauses.append("mission_id=?")
+            values.append(mission_id)
+        if takeover_only:
+            clauses.append("takeover=1")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        values.append(max(1, min(int(limit), 1000)))
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    f"SELECT * FROM watchdog_dispatches {where} ORDER BY id DESC LIMIT ?",
+                    values,
+                )
+            )
+
+    def latest_watchdog_dispatches(self) -> dict[str, sqlite3.Row]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT d.* FROM watchdog_dispatches d
+                JOIN (
+                    SELECT mission_id, max(id) AS id
+                    FROM watchdog_dispatches
+                    GROUP BY mission_id
+                ) latest ON latest.id = d.id
+                """
+            ).fetchall()
+            return {row["mission_id"]: row for row in rows}
+
+    def list_watchdog_escalations(
+        self,
+        *,
+        states: tuple[str, ...] | None = None,
+        mission_id: str | None = None,
+    ) -> list[sqlite3.Row]:
+        clauses: list[str] = []
+        values: list[object] = []
+        if states:
+            clauses.append(f"state IN ({','.join('?' for _ in states)})")
+            values.extend(states)
+        if mission_id:
+            clauses.append("mission_id=?")
+            values.append(mission_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    f"""
+                    SELECT * FROM watchdog_escalations {where}
+                    ORDER BY level DESC, first_seen_at, id
+                    """,
+                    values,
+                )
+            )
+
+    def get_watchdog_escalation(self, escalation_id: int) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM watchdog_escalations WHERE id=?",
+                (escalation_id,),
+            ).fetchone()
+
+    def sync_watchdog_escalations(
+        self,
+        conditions: list[dict],
+        *,
+        observed_at: str,
+    ) -> dict[str, list[int]]:
+        """Reconcile active escalations with the currently observed conditions.
+
+        Each condition is a dict with mission_id, kind, agent_id, level and detail.
+        New conditions open escalations, higher levels re-open acknowledged ones,
+        and active escalations with no matching condition are resolved.
+        """
+        opened: list[int] = []
+        raised: list[int] = []
+        resolved: list[int] = []
+        wanted = {(item["mission_id"], item["kind"]): item for item in conditions}
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            active = {
+                (row["mission_id"], row["kind"]): row
+                for row in conn.execute(
+                    "SELECT * FROM watchdog_escalations WHERE state != 'RESOLVED'"
+                )
+            }
+            for key, item in wanted.items():
+                detail = json.dumps(item.get("detail") or {}, sort_keys=True)
+                row = active.get(key)
+                if row is None:
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO watchdog_escalations (
+                            mission_id, kind, agent_id, level, state, detail_json,
+                            first_seen_at, last_seen_at
+                        )
+                        VALUES (?, ?, ?, ?, 'OPEN', ?, ?, ?)
+                        """,
+                        (
+                            item["mission_id"],
+                            item["kind"],
+                            item.get("agent_id"),
+                            int(item["level"]),
+                            detail,
+                            observed_at,
+                            observed_at,
+                        ),
+                    )
+                    escalation_id = int(cursor.lastrowid)
+                    opened.append(escalation_id)
+                    self._event(
+                        conn,
+                        item["mission_id"],
+                        "ESCALATION_OPENED",
+                        item.get("agent_id"),
+                        {
+                            "escalation_id": escalation_id,
+                            "kind": item["kind"],
+                            "level": int(item["level"]),
+                        },
+                    )
+                    continue
+                level = int(item["level"])
+                state = row["state"]
+                if level > int(row["level"]):
+                    state = "OPEN"
+                    raised.append(int(row["id"]))
+                    self._event(
+                        conn,
+                        item["mission_id"],
+                        "ESCALATION_RAISED",
+                        item.get("agent_id"),
+                        {
+                            "escalation_id": int(row["id"]),
+                            "kind": item["kind"],
+                            "from_level": int(row["level"]),
+                            "level": level,
+                        },
+                    )
+                conn.execute(
+                    """
+                    UPDATE watchdog_escalations
+                    SET level=max(level, ?), state=?, agent_id=?, detail_json=?,
+                        last_seen_at=?
+                    WHERE id=?
+                    """,
+                    (level, state, item.get("agent_id"), detail, observed_at, row["id"]),
+                )
+            for key, row in active.items():
+                if key in wanted:
+                    continue
+                conn.execute(
+                    """
+                    UPDATE watchdog_escalations
+                    SET state='RESOLVED', resolved_at=?
+                    WHERE id=?
+                    """,
+                    (observed_at, row["id"]),
+                )
+                resolved.append(int(row["id"]))
+                self._event(
+                    conn,
+                    row["mission_id"],
+                    "ESCALATION_RESOLVED",
+                    row["agent_id"],
+                    {"escalation_id": int(row["id"]), "kind": row["kind"]},
+                )
+            conn.execute("COMMIT")
+        return {"opened": opened, "raised": raised, "resolved": resolved}
+
+    def acknowledge_watchdog_escalation(self, escalation_id: int, actor: str) -> sqlite3.Row:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM watchdog_escalations WHERE id=?",
+                (escalation_id,),
+            ).fetchone()
+            if not row:
+                conn.execute("ROLLBACK")
+                raise KeyError(escalation_id)
+            if row["state"] == "RESOLVED":
+                conn.execute("ROLLBACK")
+                raise ValueError(f"escalation {escalation_id} is already resolved")
+            now = _iso_now()
+            conn.execute(
+                """
+                UPDATE watchdog_escalations
+                SET state='ACKNOWLEDGED', acknowledged_by=?, acknowledged_at=?
+                WHERE id=?
+                """,
+                (actor, now, escalation_id),
+            )
+            self._event(
+                conn,
+                row["mission_id"],
+                "ESCALATION_ACKNOWLEDGED",
+                actor,
+                {"escalation_id": escalation_id, "kind": row["kind"]},
+            )
+            updated = conn.execute(
+                "SELECT * FROM watchdog_escalations WHERE id=?",
+                (escalation_id,),
+            ).fetchone()
+            conn.execute("COMMIT")
+            return updated
 
     def events(self, mission_id: str) -> list[sqlite3.Row]:
         with self.connection() as conn:

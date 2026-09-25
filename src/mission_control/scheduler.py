@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -10,6 +10,7 @@ from .git_executor import GitWorktreeExecutor
 from .lease import LeaseManager
 from .models import AgentRole, MissionStatus
 from .store import MissionStore
+from .watchdog import EscalationPolicy, WatchdogMonitor
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,9 @@ class DispatchOutcome:
     execution_id: str | None = None
     reason: str | None = None
     takeover: bool = False
+    predecessor_agent_id: str | None = None
+    predecessor_execution_id: str | None = None
+    dispatch_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,8 @@ class WatchdogSnapshot:
     blocked: tuple[str, ...] = ()
     expired: tuple[str, ...] = ()
     reminders: tuple[str, ...] = ()
+    stale: tuple[str, ...] = ()
+    escalations: dict | None = None
 
 
 class MissionScheduler:
@@ -51,6 +57,7 @@ class MissionScheduler:
         max_parallel_writers: int = 3,
         lease_ttl_seconds: int = 600,
         git: GitWorktreeExecutor | None = None,
+        escalation_policy: EscalationPolicy | None = None,
     ) -> None:
         if max_parallel_writers < 1 or max_parallel_writers > 3:
             raise ValueError("max_parallel_writers must be between 1 and 3")
@@ -63,6 +70,12 @@ class MissionScheduler:
         self.max_parallel_writers = max_parallel_writers
         self.lease_ttl_seconds = lease_ttl_seconds
         self.git = git or GitWorktreeExecutor()
+        self.monitor = WatchdogMonitor(
+            store,
+            workers=workers,
+            policy=escalation_policy,
+            clock=self._now,
+        )
 
     @staticmethod
     def _now() -> datetime:
@@ -193,16 +206,50 @@ class MissionScheduler:
         )
 
     def _dispatch(self, mission: dict, worker: WorkerSlot) -> DispatchOutcome:
-        existing = self.leases.current(mission["mission_id"])
-        takeover = bool(existing)
-        lease = self.leases.claim(
-            mission["mission_id"],
-            worker.agent_id,
-            role=AgentRole.WRITER,
-            ttl_seconds=self.lease_ttl_seconds,
+        outcome = self._dispatch_unrecorded(mission, worker)
+        dispatch_id = self.store.record_watchdog_dispatch(
+            mission_id=outcome.mission_id,
+            agent_id=outcome.agent_id,
+            provider=outcome.provider,
+            state=outcome.state,
+            execution_id=outcome.execution_id,
+            takeover=outcome.takeover,
+            predecessor_agent_id=outcome.predecessor_agent_id,
+            predecessor_execution_id=outcome.predecessor_execution_id,
+            checkpoint_head=self._checkpoint_head(mission["mission_id"]),
+            reason=outcome.reason,
         )
+        return replace(outcome, dispatch_id=dispatch_id)
+
+    def _checkpoint_head(self, mission_id: str) -> str | None:
+        checkpoint = self.store.latest_checkpoint(mission_id)
+        return checkpoint["head_sha"] if checkpoint else None
+
+    def _dispatch_unrecorded(self, mission: dict, worker: WorkerSlot) -> DispatchOutcome:
+        existing = self.leases.current(mission["mission_id"])
+        resume_existing = bool(existing)
+        takeover = False
+        predecessor_agent = existing["agent_id"] if existing else None
+        predecessor_execution = None
+        if predecessor_agent:
+            row = self.store.latest_agent_execution_for(
+                mission["mission_id"],
+                predecessor_agent,
+            )
+            predecessor_execution = row["execution_id"] if row else None
         try:
-            assignment = self._prepare_assignment(mission, worker, takeover=takeover)
+            lease = self.leases.claim(
+                mission["mission_id"],
+                worker.agent_id,
+                role=AgentRole.WRITER,
+                ttl_seconds=self.lease_ttl_seconds,
+            )
+            takeover = lease.takeover
+            assignment = self._prepare_assignment(
+                mission,
+                worker,
+                takeover=resume_existing,
+            )
             adapter = self.adapters[worker.provider]
             execution: AgentExecution = adapter.dispatch(assignment)  # type: ignore[attr-defined]
             return DispatchOutcome(
@@ -211,7 +258,9 @@ class MissionScheduler:
                 worker.provider,
                 execution.state,
                 execution.execution_id,
-                takeover=lease.takeover,
+                takeover=takeover,
+                predecessor_agent_id=predecessor_agent,
+                predecessor_execution_id=predecessor_execution,
             )
         except Exception as exc:  # noqa: BLE001
             current = self.leases.current(mission["mission_id"])
@@ -232,7 +281,9 @@ class MissionScheduler:
                 worker.provider,
                 "NOT_DISPATCHED",
                 reason=f"{type(exc).__name__}: {exc}",
-                takeover=lease.takeover,
+                takeover=takeover,
+                predecessor_agent_id=predecessor_agent,
+                predecessor_execution_id=predecessor_execution,
             )
 
     def tick(self) -> WatchdogSnapshot:
@@ -252,12 +303,18 @@ class MissionScheduler:
             if outcome.state == "NOT_DISPATCHED":
                 blocked.append(f"{outcome.mission_id}: {outcome.reason or 'dispatch failed'}")
 
+        escalations = self.monitor.evaluate_escalations()
         return WatchdogSnapshot(
             active_writers=len(self._active_leases()),
             assigned=tuple(assigned),
             blocked=tuple(blocked),
             expired=tuple(expired),
             reminders=tuple(self.reminders()),
+            stale=tuple(
+                f"{lease['mission_id']}: {lease['state']} writer {lease['agent_id']}"
+                for lease in self.monitor.stale_leases()
+            ),
+            escalations=escalations,
         )
 
     def reminders(self) -> list[str]:
@@ -292,4 +349,5 @@ class MissionScheduler:
             "active_writers": len(self._active_leases()),
             "max_parallel_writers": self.max_parallel_writers,
             "reminders": self.reminders(),
+            "open_escalations": len(self.monitor.escalations()),
         }
