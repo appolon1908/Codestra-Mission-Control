@@ -506,13 +506,38 @@ class MissionScheduler:
 
     def daily_report(self) -> dict:
         counts: dict[str, int] = {}
+        active: list[str] = []
+        blocked: list[str] = []
+        review: list[str] = []
+        approval_required: list[str] = []
+
         for row in self.store.list_missions():
-            status = str(row["status"])
-            counts[status] = counts.get(status, 0) + 1
+            mission_id = str(row["mission_id"])
+            status = MissionStatus(row["status"])
+            counts[status.value] = counts.get(status.value, 0) + 1
+
+            if status is MissionStatus.WORKING:
+                active.append(mission_id)
+            elif status is MissionStatus.BLOCKED:
+                blocked.append(mission_id)
+            elif status is MissionStatus.IN_REVIEW:
+                review.append(mission_id)
+
+            if status in {
+                MissionStatus.NEEDS_DECISION,
+                MissionStatus.MERGE_READY,
+                MissionStatus.STAGING,
+            }:
+                approval_required.append(mission_id)
+
         return {
             "generated_at": self._now().isoformat(),
             "status_counts": counts,
             "active_writers": len(self._active_leases()),
             "max_parallel_writers": self.max_parallel_writers,
+            "active": sorted(active),
+            "blocked": sorted(blocked),
+            "review": sorted(review),
+            "approval_required": sorted(approval_required),
             "reminders": self.reminders(),
         }
