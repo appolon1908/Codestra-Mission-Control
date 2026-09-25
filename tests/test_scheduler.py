@@ -189,3 +189,54 @@ def test_daily_report_summarizes_statuses(tmp_path):
     assert report["status_counts"]["READY"] == 1
     assert report["status_counts"]["IN_REVIEW"] == 1
     assert "M-1: IN_REVIEW" in report["reminders"]
+
+
+def test_three_independent_missions_run_in_parallel_without_shared_lease(tmp_path):
+    store = setup_store(tmp_path, 3)
+    scheduler = build_scheduler(store, tmp_path)
+
+    snapshot = scheduler.tick()
+
+    assert snapshot.active_writers == 3
+    assert len(snapshot.assigned) == 3
+    mission_ids = {item.mission_id for item in snapshot.assigned}
+    agent_ids = {item.agent_id for item in snapshot.assigned}
+    assert mission_ids == {"M-0", "M-1", "M-2"}
+    assert len(agent_ids) == 3
+    for item in snapshot.assigned:
+        lease = LeaseManager(store).current(item.mission_id)
+        assert lease is not None
+        assert lease["agent_id"] == item.agent_id
+
+
+def test_blocked_mission_does_not_busy_loop_dispatch(tmp_path):
+    store = setup_store(tmp_path, 1)
+    store.set_status("M-0", MissionStatus.BLOCKED)
+    scheduler = build_scheduler(store, tmp_path)
+
+    first = scheduler.tick()
+    second = scheduler.tick()
+
+    assert first.assigned == ()
+    assert second.assigned == ()
+    assert first.active_writers == 0
+    assert second.active_writers == 0
+    assert first.reminders == ("M-0: BLOCKED",)
+    assert second.reminders == ("M-0: BLOCKED",)
+
+
+def test_daily_report_exposes_blocked_review_and_approval_required_work(tmp_path):
+    store = setup_store(tmp_path, 4)
+    store.set_status("M-0", MissionStatus.BLOCKED)
+    store.set_status("M-1", MissionStatus.IN_REVIEW)
+    store.set_status("M-2", MissionStatus.MERGE_READY)
+    scheduler = build_scheduler(store, tmp_path)
+
+    report = scheduler.daily_report()
+
+    assert report["status_counts"]["BLOCKED"] == 1
+    assert report["status_counts"]["IN_REVIEW"] == 1
+    assert report["status_counts"]["MERGE_READY"] == 1
+    assert "M-0: BLOCKED" in report["reminders"]
+    assert "M-1: IN_REVIEW" in report["reminders"]
+    assert "M-2: MERGE_READY" in report["reminders"]
