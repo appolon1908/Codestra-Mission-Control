@@ -235,18 +235,52 @@ class MissionScheduler:
                 takeover=lease.takeover,
             )
 
+    def _replacement_worker(
+        self,
+        mission: dict,
+        workers: list[WorkerSlot],
+    ) -> WorkerSlot | None:
+        if not workers:
+            return None
+
+        lease = self.leases.current(mission["mission_id"])
+        if not lease:
+            return workers[0]
+
+        # An expired writer must be replaced by a different agent. Reusing the
+        # same stopped worker would turn takeover into a silent retry loop and
+        # defeat the watchdog's recovery guarantee.
+        for worker in workers:
+            if worker.agent_id != lease["agent_id"]:
+                return worker
+        return None
+
     def tick(self) -> WatchdogSnapshot:
         active = self._active_leases()
         capacity = max(0, self.max_parallel_writers - len(active))
-        workers = self._idle_workers()[:capacity]
+        workers = self._idle_workers()
         candidates = self._eligible_missions()
 
         assigned: list[DispatchOutcome] = []
         blocked: list[str] = []
         expired: list[str] = []
-        for mission, worker in zip(candidates, workers):
-            if self.leases.current(mission["mission_id"]):
+        for mission in candidates:
+            if len(assigned) >= capacity or not workers:
+                break
+
+            lease = self.leases.current(mission["mission_id"])
+            if lease:
                 expired.append(mission["mission_id"])
+
+            worker = self._replacement_worker(mission, workers)
+            if worker is None:
+                blocked.append(
+                    f"{mission['mission_id']}: expired writer {lease['agent_id']} "
+                    "has no different replacement worker available"
+                )
+                continue
+
+            workers.remove(worker)
             outcome = self._dispatch(mission, worker)
             assigned.append(outcome)
             if outcome.state == "NOT_DISPATCHED":
