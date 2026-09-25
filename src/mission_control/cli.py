@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import uuid
 from pathlib import Path
 
 from .controller import MissionController
+from .implementation_api import ImplementationAPI
 from .lease import LeaseManager
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
 from .policy import ApprovalPolicy
@@ -76,6 +78,37 @@ def main() -> None:
     status = sub.add_parser("status")
     status.add_argument("--mission", required=True)
 
+    implementation_start = sub.add_parser("implementation-start")
+    implementation_start.add_argument("--execution-id")
+    implementation_start.add_argument("--mission", required=True)
+    implementation_start.add_argument("--agent", required=True)
+    implementation_start.add_argument("--workstation", required=True)
+    implementation_start.add_argument("--provider", required=True)
+    implementation_start.add_argument("--branch", required=True)
+    implementation_start.add_argument("--worktree", required=True)
+    implementation_start.add_argument("--api-required", action="store_true")
+
+    implementation_proof = sub.add_parser("implementation-proof")
+    implementation_proof.add_argument("--execution", required=True)
+    implementation_proof.add_argument("--implementation-file", action="append", default=[])
+    implementation_proof.add_argument("--api-endpoint", action="append", default=[])
+    implementation_proof.add_argument("--tests-json", default="{}")
+    implementation_proof.add_argument("--local-sha")
+    implementation_proof.add_argument("--pushed-sha")
+    implementation_proof.add_argument("--pr-number", type=int)
+    implementation_proof.add_argument("--pr-url")
+    implementation_proof.add_argument("--pr-head-sha")
+
+    implementation_status = sub.add_parser("implementation-status")
+    implementation_status.add_argument("--execution", required=True)
+
+    implementation_list = sub.add_parser("implementation-list")
+    implementation_list.add_argument("--state", action="append", default=[])
+
+    implementation_api = sub.add_parser("serve-implementation-api")
+    implementation_api.add_argument("--host", default="127.0.0.1")
+    implementation_api.add_argument("--port", type=int, default=8790)
+
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
@@ -135,6 +168,105 @@ def main() -> None:
             next_task_requested=args.request_next_task,
         )
         print(json.dumps({"ok": True, "checkpoint_id": checkpoint_id}))
+        return
+
+    if args.command == "implementation-start":
+        execution_id = args.execution_id or f"impl-{uuid.uuid4().hex}"
+        agent_number = store.start_implementation_execution(
+            execution_id=execution_id,
+            mission_id=args.mission,
+            agent_id=args.agent,
+            workstation=args.workstation,
+            provider=args.provider,
+            branch=args.branch,
+            worktree=args.worktree,
+            api_required=args.api_required,
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "execution_id": execution_id,
+                    "agent_number": agent_number,
+                    "state": "STARTED",
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "implementation-proof":
+        decision = store.record_implementation_proof(
+            args.execution,
+            implementation_files=args.implementation_file,
+            api_endpoints=args.api_endpoint,
+            tests=json.loads(args.tests_json),
+            local_commit_sha=args.local_sha,
+            pushed_branch_sha=args.pushed_sha,
+            pr_number=args.pr_number,
+            pr_url=args.pr_url,
+            pr_head_sha=args.pr_head_sha,
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": decision.eligible_for_review,
+                    "state": decision.state.value,
+                    "push_proven": decision.push_proven,
+                    "eligible_for_review": decision.eligible_for_review,
+                    "reasons": list(decision.reasons),
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "implementation-status":
+        row = store.get_implementation_execution(args.execution)
+        if not row:
+            raise SystemExit(f"implementation execution not found: {args.execution}")
+        payload = dict(row)
+        for key in ("implementation_files_json", "api_endpoints_json", "tests_json"):
+            payload[key.removesuffix("_json")] = json.loads(payload.pop(key))
+        payload["api_required"] = bool(payload["api_required"])
+        payload["proof_matched"] = bool(payload["proof_matched"])
+        print(json.dumps(payload, sort_keys=True))
+        return
+
+    if args.command == "implementation-list":
+        states = tuple(args.state) if args.state else None
+        rows = [dict(row) for row in store.list_implementation_executions(states=states)]
+        print(
+            json.dumps(
+                {
+                    "count": len(rows),
+                    "proven": sum(row["state"] == "PROVEN" for row in rows),
+                    "needs_rework": sum(
+                        row["state"] == "NEEDS_REWORK" for row in rows
+                    ),
+                    "executions": rows,
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "serve-implementation-api":
+        server = ImplementationAPI(store).server(args.host, args.port)
+        host, port = server.server_address
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "service": "mission-control-implementation-api",
+                    "host": host,
+                    "port": port,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        server.serve_forever()
         return
 
     if args.command == "approve":

@@ -91,6 +91,35 @@ class MissionStore:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS implementation_executions (
+                    execution_id TEXT PRIMARY KEY,
+                    agent_number INTEGER NOT NULL UNIQUE,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    agent_id TEXT NOT NULL,
+                    workstation TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    branch TEXT NOT NULL,
+                    worktree TEXT NOT NULL,
+                    api_required INTEGER NOT NULL DEFAULT 0,
+                    state TEXT NOT NULL,
+                    implementation_files_json TEXT NOT NULL,
+                    api_endpoints_json TEXT NOT NULL,
+                    tests_json TEXT NOT NULL,
+                    local_commit_sha TEXT,
+                    pushed_branch_sha TEXT,
+                    pr_number INTEGER,
+                    pr_url TEXT,
+                    pr_head_sha TEXT,
+                    proof_matched INTEGER NOT NULL DEFAULT 0,
+                    started_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_implementation_mission
+                    ON implementation_executions(mission_id, agent_number);
+                CREATE INDEX IF NOT EXISTS idx_implementation_state
+                    ON implementation_executions(state, agent_number);
+
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
@@ -429,6 +458,204 @@ class MissionStore:
                 "SELECT * FROM agent_executions WHERE execution_id=?",
                 (execution_id,),
             ).fetchone()
+
+    def start_implementation_execution(
+        self,
+        *,
+        execution_id: str,
+        mission_id: str,
+        agent_id: str,
+        workstation: str,
+        provider: str,
+        branch: str,
+        worktree: str,
+        api_required: bool = False,
+    ) -> int:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            mission = conn.execute(
+                "SELECT mission_id FROM missions WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            if not mission:
+                conn.execute("ROLLBACK")
+                raise KeyError(mission_id)
+            number_row = conn.execute(
+                "SELECT COALESCE(MAX(agent_number), 0) + 1 AS next_number "
+                "FROM implementation_executions"
+            ).fetchone()
+            agent_number = int(number_row["next_number"])
+            conn.execute(
+                """
+                INSERT INTO implementation_executions (
+                    execution_id, agent_number, mission_id, agent_id,
+                    workstation, provider, branch, worktree, api_required,
+                    state, implementation_files_json, api_endpoints_json,
+                    tests_json, proof_matched, started_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', 0, ?, ?)
+                """,
+                (
+                    execution_id,
+                    agent_number,
+                    mission_id,
+                    agent_id,
+                    workstation,
+                    provider,
+                    branch,
+                    worktree,
+                    int(api_required),
+                    "STARTED",
+                    now,
+                    now,
+                ),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "IMPLEMENTATION_EXECUTION_STARTED",
+                agent_id,
+                {
+                    "execution_id": execution_id,
+                    "agent_number": agent_number,
+                    "workstation": workstation,
+                    "provider": provider,
+                    "branch": branch,
+                    "worktree": worktree,
+                    "api_required": api_required,
+                },
+            )
+            conn.execute("COMMIT")
+            return agent_number
+
+    def record_implementation_proof(
+        self,
+        execution_id: str,
+        *,
+        implementation_files: list[str],
+        api_endpoints: list[str],
+        tests: dict,
+        local_commit_sha: str | None,
+        pushed_branch_sha: str | None,
+        pr_number: int | None,
+        pr_url: str | None,
+        pr_head_sha: str | None,
+    ):
+        from .implementation_contract import evaluate_implementation_proof
+
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM implementation_executions WHERE execution_id=?",
+                (execution_id,),
+            ).fetchone()
+            if not row:
+                conn.execute("ROLLBACK")
+                raise KeyError(execution_id)
+
+            decision = evaluate_implementation_proof(
+                local_commit_sha=local_commit_sha,
+                pushed_branch_sha=pushed_branch_sha,
+                pr_head_sha=pr_head_sha,
+                pr_url=pr_url,
+                tests=tests,
+                implementation_files=implementation_files,
+                api_required=bool(row["api_required"]),
+                api_endpoints=api_endpoints,
+            )
+            conn.execute(
+                """
+                UPDATE implementation_executions
+                SET state=?, implementation_files_json=?, api_endpoints_json=?,
+                    tests_json=?, local_commit_sha=?, pushed_branch_sha=?,
+                    pr_number=?, pr_url=?, pr_head_sha=?, proof_matched=?,
+                    updated_at=?
+                WHERE execution_id=?
+                """,
+                (
+                    decision.state.value,
+                    json.dumps(implementation_files, sort_keys=True),
+                    json.dumps(api_endpoints, sort_keys=True),
+                    json.dumps(tests, sort_keys=True),
+                    local_commit_sha,
+                    pushed_branch_sha,
+                    pr_number,
+                    pr_url,
+                    pr_head_sha,
+                    int(decision.push_proven),
+                    _iso_now(),
+                    execution_id,
+                ),
+            )
+            self._event(
+                conn,
+                row["mission_id"],
+                "IMPLEMENTATION_PROOF_RECORDED",
+                row["agent_id"],
+                {
+                    "execution_id": execution_id,
+                    "agent_number": row["agent_number"],
+                    "state": decision.state.value,
+                    "eligible_for_review": decision.eligible_for_review,
+                    "push_proven": decision.push_proven,
+                    "reasons": list(decision.reasons),
+                    "local_commit_sha": local_commit_sha,
+                    "pushed_branch_sha": pushed_branch_sha,
+                    "pr_head_sha": pr_head_sha,
+                    "pr_number": pr_number,
+                    "pr_url": pr_url,
+                },
+            )
+            conn.execute("COMMIT")
+            return decision
+
+    def get_implementation_execution(self, execution_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM implementation_executions WHERE execution_id=?",
+                (execution_id,),
+            ).fetchone()
+
+    def latest_implementation_execution(
+        self,
+        mission_id: str,
+    ) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM implementation_executions
+                WHERE mission_id=?
+                ORDER BY agent_number DESC
+                LIMIT 1
+                """,
+                (mission_id,),
+            ).fetchone()
+
+    def list_implementation_executions(
+        self,
+        *,
+        states: tuple[str, ...] | None = None,
+    ) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            if not states:
+                return list(
+                    conn.execute(
+                        "SELECT * FROM implementation_executions "
+                        "ORDER BY agent_number"
+                    )
+                )
+            placeholders = ",".join("?" for _ in states)
+            return list(
+                conn.execute(
+                    f"""
+                    SELECT * FROM implementation_executions
+                    WHERE state IN ({placeholders})
+                    ORDER BY agent_number
+                    """,
+                    states,
+                )
+            )
 
     def record_checkpoint(
         self,
