@@ -8,11 +8,16 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .control_sync import Surface, SurfaceObservation
 from .models import ApprovalLevel, Mission, MissionStatus
 
 
 def _iso_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    return datetime.fromisoformat(value) if value else None
 
 
 class MissionStore:
@@ -120,6 +125,20 @@ class MissionStore:
                     agent_id TEXT,
                     payload_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS surface_sync_state (
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    surface TEXT NOT NULL,
+                    available INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    head_sha TEXT,
+                    last_error TEXT,
+                    observed_at TEXT NOT NULL,
+                    last_success_at TEXT,
+                    last_error_at TEXT,
+                    recorded_by TEXT,
+                    PRIMARY KEY (mission_id, surface)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_events_mission
@@ -479,6 +498,115 @@ class MissionStore:
             )
             conn.execute("COMMIT")
             return int(cursor.lastrowid)
+
+    def record_surface_observation(
+        self,
+        mission_id: str,
+        observation: SurfaceObservation,
+        *,
+        agent_id: str | None = None,
+    ) -> SurfaceObservation:
+        """Persist one surface observation, keeping per-source freshness history.
+
+        ``last_success_at`` / ``last_error_at`` survive later failures / successes, the
+        last known head SHA survives an unreachable read, and an observation older than
+        the stored one is ignored so out-of-order writers cannot regress state.
+        """
+        observed = observation.observed_at or datetime.now(UTC)
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                "SELECT * FROM surface_sync_state WHERE mission_id=? AND surface=?",
+                (mission_id, observation.surface.value),
+            ).fetchone()
+            if existing and _parse_ts(existing["observed_at"]) > observed:
+                conn.execute("ROLLBACK")
+                return self._row_to_observation(existing)
+
+            succeeded = observation.succeeded
+            last_success = observed.isoformat() if succeeded else None
+            last_error_at = None if succeeded else observed.isoformat()
+            last_error = None if succeeded else (observation.error or observation.status)
+            head_sha = observation.head_sha
+            if existing:
+                last_success = last_success or existing["last_success_at"]
+                last_error_at = last_error_at or existing["last_error_at"]
+                last_error = last_error or existing["last_error"]
+                if head_sha is None and not succeeded:
+                    head_sha = existing["head_sha"]
+            conn.execute(
+                """
+                INSERT INTO surface_sync_state (
+                    mission_id, surface, available, status, head_sha, last_error,
+                    observed_at, last_success_at, last_error_at, recorded_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(mission_id, surface) DO UPDATE SET
+                    available=excluded.available,
+                    status=excluded.status,
+                    head_sha=excluded.head_sha,
+                    last_error=excluded.last_error,
+                    observed_at=excluded.observed_at,
+                    last_success_at=excluded.last_success_at,
+                    last_error_at=excluded.last_error_at,
+                    recorded_by=excluded.recorded_by
+                """,
+                (
+                    mission_id,
+                    observation.surface.value,
+                    int(observation.available),
+                    observation.status,
+                    head_sha,
+                    last_error,
+                    observed.isoformat(),
+                    last_success,
+                    last_error_at,
+                    agent_id,
+                ),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "SURFACE_OBSERVED",
+                agent_id,
+                {
+                    "surface": observation.surface.value,
+                    "available": observation.available,
+                    "status": observation.status,
+                    "head_sha": head_sha,
+                    "error": observation.error,
+                    "observed_at": observed.isoformat(),
+                },
+            )
+            row = conn.execute(
+                "SELECT * FROM surface_sync_state WHERE mission_id=? AND surface=?",
+                (mission_id, observation.surface.value),
+            ).fetchone()
+            conn.execute("COMMIT")
+            return self._row_to_observation(row)
+
+    def surface_observations(self, mission_id: str) -> list[SurfaceObservation]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM surface_sync_state WHERE mission_id=? ORDER BY surface",
+                (mission_id,),
+            ).fetchall()
+        return [self._row_to_observation(row) for row in rows]
+
+    @staticmethod
+    def _row_to_observation(row: sqlite3.Row) -> SurfaceObservation:
+        available = bool(row["available"])
+        succeeded_last = row["observed_at"] == row["last_success_at"]
+        return SurfaceObservation(
+            surface=Surface(row["surface"]),
+            available=available,
+            status=row["status"],
+            head_sha=row["head_sha"],
+            error=None if succeeded_last else row["last_error"],
+            observed_at=_parse_ts(row["observed_at"]),
+            last_success_at=_parse_ts(row["last_success_at"]),
+            last_error_at=_parse_ts(row["last_error_at"]),
+        )
 
     def record_approval(
         self,
