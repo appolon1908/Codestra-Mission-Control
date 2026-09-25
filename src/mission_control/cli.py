@@ -20,7 +20,9 @@ from .implementation_api import ImplementationAPI
 from .lease import LeaseManager
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
 from .policy import ApprovalPolicy
+from .scheduler import WorkerSlot
 from .store import MissionStore
+from .watchdog import EscalationPolicy, WatchdogMonitor
 from .worker_node import (
     NodeNotFound,
     NodeValidationError,
@@ -145,6 +147,22 @@ def main() -> None:
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
+    watchdog = sub.add_parser("watchdog-status")
+    watchdog.add_argument(
+        "--worker",
+        action="append",
+        default=[],
+        help="worker slot as AGENT_ID:PROVIDER (repeatable)",
+    )
+    watchdog.add_argument("--stale-heartbeat-seconds", type=int, default=300)
+    watchdog.add_argument("--escalate-after-seconds", type=int, default=900)
+    watchdog.add_argument("--owner-decision-after-seconds", type=int, default=3600)
+    watchdog.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="persist escalation changes before reading back",
+    )
+
     observe = sub.add_parser("sync-observe")
     observe.add_argument("--mission", required=True)
     observe.add_argument("--agent", required=True)
@@ -219,6 +237,28 @@ def main() -> None:
             )
         )
         print(json.dumps({"ok": True, "mission": args.mission}))
+        return
+
+    if args.command == "watchdog-status":
+        workers = []
+        for spec in args.worker:
+            agent_id, _, provider = spec.partition(":")
+            if not agent_id or not provider:
+                raise SystemExit(f"invalid --worker {spec!r}; expected AGENT_ID:PROVIDER")
+            workers.append(WorkerSlot(agent_id, provider))
+        monitor = WatchdogMonitor(
+            store,
+            workers=workers,
+            policy=EscalationPolicy(
+                stale_heartbeat_seconds=args.stale_heartbeat_seconds,
+                escalate_after_seconds=args.escalate_after_seconds,
+                owner_decision_after_seconds=args.owner_decision_after_seconds,
+            ),
+        )
+        evaluation = monitor.evaluate_escalations() if args.evaluate else None
+        payload = monitor.snapshot()
+        payload["evaluation"] = evaluation
+        print(json.dumps(payload, sort_keys=True, default=str))
         return
 
     leases = LeaseManager(store)
