@@ -38,6 +38,17 @@ class ApprovalPolicy:
         if required <= ApprovalLevel.LOCAL_WRITE:
             return PolicyDecision(True, required, approved, "low-risk action")
 
+        if approved >= required >= ApprovalLevel.MERGE:
+            authorization = self.store.merge_authorization(mission_id)
+            if not authorization["authorized"]:
+                return PolicyDecision(
+                    False,
+                    required,
+                    approved,
+                    f"{action} requires current exact-head merge-coordinator "
+                    f"authorization: {', '.join(authorization['reasons'])}",
+                )
+
         if approved >= required:
             return PolicyDecision(True, required, approved, "required approval recorded")
 

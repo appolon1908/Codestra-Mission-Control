@@ -30,7 +30,7 @@ def test_writer_cannot_self_approve_merge(tmp_path):
         )
 
 
-def test_independent_reviewer_can_approve_merge_with_green_ci(tmp_path):
+def test_independent_reviewer_can_approve_merge_with_green_ci(tmp_path, authorize_merge):
     store = store_for(tmp_path)
     LeaseManager(store).claim("PAS-186", "writer-1")
     engine = ApprovalEngine(store)
@@ -40,6 +40,9 @@ def test_independent_reviewer_can_approve_merge_with_green_ci(tmp_path):
         ApprovalContext("reviewer-1", ActorKind.AGENT, ci_green=True),
     )
     assert result.recorded is True
+    # A recorded approval alone no longer authorizes merge: exact-head coordination is required.
+    assert engine.can_execute("PAS-186", "merge") is False
+    authorize_merge(store, "PAS-186", claim=False)
     assert engine.can_execute("PAS-186", "merge") is True
 
 
@@ -54,7 +57,7 @@ def test_staging_requires_certification(tmp_path):
         )
 
 
-def test_production_requires_explicit_human(tmp_path):
+def test_production_requires_explicit_human(tmp_path, authorize_merge):
     store = store_for(tmp_path)
     engine = ApprovalEngine(store)
     with pytest.raises(ApprovalDenied):
@@ -82,4 +85,6 @@ def test_production_requires_explicit_human(tmp_path):
         ),
     )
     assert result.recorded is True
+    assert engine.can_execute("PAS-186", "production_effect") is False
+    authorize_merge(store, "PAS-186")
     assert engine.can_execute("PAS-186", "production_effect") is True

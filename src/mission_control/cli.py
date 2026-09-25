@@ -7,9 +7,18 @@ from pathlib import Path
 
 from .controller import MissionController
 from .lease import LeaseManager
+from .merge_api import MergeCoordinatorAPI
+from .merge_coordinator import (
+    EvidenceRejected,
+    EvidenceRole,
+    EvidenceVerdict,
+    MergeCoordinator,
+    PullRequestSnapshot,
+    classify_conflicts,
+)
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
 from .policy import ApprovalPolicy
-from .store import MissionStore
+from .store import CompletionBlocked, MissionStore
 
 
 def _store(path: str) -> MissionStore:
@@ -76,6 +85,47 @@ def main() -> None:
     status = sub.add_parser("status")
     status.add_argument("--mission", required=True)
 
+    record_head = sub.add_parser("record-head")
+    record_head.add_argument("--mission", required=True)
+    record_head.add_argument("--head-sha", required=True)
+    record_head.add_argument("--actor", required=True)
+
+    evidence = sub.add_parser("record-evidence")
+    evidence.add_argument("--mission", required=True)
+    evidence.add_argument("--role", choices=[r.value for r in EvidenceRole], required=True)
+    evidence.add_argument("--head-sha", required=True)
+    evidence.add_argument("--actor", required=True)
+    evidence.add_argument(
+        "--verdict", choices=[v.value for v in EvidenceVerdict], required=True
+    )
+    evidence.add_argument("--blocker", action="append", default=[])
+
+    dependency = sub.add_parser("add-dependency")
+    dependency.add_argument("--mission", required=True)
+    dependency.add_argument("--depends-on", required=True)
+
+    classify = sub.add_parser("classify-conflicts")
+    classify.add_argument(
+        "--mergeable", choices=["true", "false", "unknown"], required=True
+    )
+    classify.add_argument("--path", action="append", default=[])
+    classify.add_argument("--cross-repo", action="store_true")
+
+    merge_evaluate = sub.add_parser("merge-evaluate")
+    merge_evaluate.add_argument("--mission", required=True)
+    merge_evaluate.add_argument(
+        "--snapshot-json",
+        required=True,
+        help="PR snapshot JSON, or @path to read it from a file",
+    )
+
+    merge_authorization = sub.add_parser("merge-authorization")
+    merge_authorization.add_argument("--mission", required=True)
+
+    merge_api = sub.add_parser("serve-merge-api")
+    merge_api.add_argument("--host", default="127.0.0.1")
+    merge_api.add_argument("--port", type=int, default=8791)
+
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
@@ -119,8 +169,95 @@ def main() -> None:
         return
 
     if args.command == "release":
-        leases.release(args.mission, args.agent, next_status=MissionStatus(args.status))
+        try:
+            leases.release(args.mission, args.agent, next_status=MissionStatus(args.status))
+        except CompletionBlocked as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": "completion_blocked",
+                        "status": args.status,
+                        "reasons": exc.reasons,
+                    }
+                )
+            )
+            raise SystemExit(2) from None
         print(json.dumps({"ok": True, "status": args.status}))
+        return
+
+    coordinator = MergeCoordinator(store)
+
+    if args.command == "record-head":
+        print(
+            json.dumps(
+                coordinator.record_head(args.mission, args.head_sha, args.actor),
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "record-evidence":
+        try:
+            evidence_id = coordinator.record_evidence(
+                args.mission,
+                role=EvidenceRole(args.role),
+                head_sha=args.head_sha,
+                actor=args.actor,
+                verdict=EvidenceVerdict(args.verdict),
+                blockers=args.blocker,
+            )
+        except EvidenceRejected as exc:
+            print(json.dumps({"ok": False, "error": "evidence_rejected", "detail": str(exc)}))
+            raise SystemExit(2) from None
+        print(json.dumps({"ok": True, "evidence_id": evidence_id}))
+        return
+
+    if args.command == "add-dependency":
+        store.add_dependency(args.mission, args.depends_on)
+        print(
+            json.dumps(
+                {"ok": True, "mission": args.mission,
+                 "dependencies": store.dependencies(args.mission)}
+            )
+        )
+        return
+
+    if args.command == "classify-conflicts":
+        mergeable = {"true": True, "false": False, "unknown": None}[args.mergeable]
+        assessment = classify_conflicts(mergeable, args.path, cross_repo=args.cross_repo)
+        print(json.dumps(assessment.as_dict(), sort_keys=True))
+        return
+
+    if args.command == "merge-evaluate":
+        raw = args.snapshot_json
+        if raw.startswith("@"):
+            raw = Path(raw[1:]).read_text(encoding="utf-8")
+        decision = coordinator.evaluate(
+            args.mission, PullRequestSnapshot.from_dict(json.loads(raw))
+        )
+        print(json.dumps(decision.as_dict(), sort_keys=True))
+        if not decision.merge_allowed:
+            raise SystemExit(3)
+        return
+
+    if args.command == "merge-authorization":
+        authorization = coordinator.authorization(args.mission)
+        print(json.dumps(authorization, sort_keys=True))
+        if not authorization["authorized"]:
+            raise SystemExit(3)
+        return
+
+    if args.command == "serve-merge-api":
+        server = MergeCoordinatorAPI(store).server(args.host, args.port)
+        host, port = server.server_address[:2]
+        print(json.dumps({"ok": True, "listening": f"http://{host}:{port}"}), flush=True)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.server_close()
         return
 
     if args.command == "checkpoint":

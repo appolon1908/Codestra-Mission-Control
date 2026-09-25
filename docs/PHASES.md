@@ -21,3 +21,7 @@ Reviewer lane, staging gate, production human gate, evidence bundle.
 ## MC-06 — 24/7 operations
 Watchdog, escalation timers, reminders, morning report, stuck-agent takeover,
 three-agent scheduling and service observability.
+
+## CORE-AI-02 — Merge Coordinator
+Exact-SHA review/verification evidence, conflict classes 0-4, fail-closed merge-ready
+predicate, decision ledger, gated completion and HTTP API. See `MERGE_COORDINATOR.md`.
