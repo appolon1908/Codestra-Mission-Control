@@ -125,10 +125,10 @@ def test_blocked_mission_is_not_dispatched(tmp_path):
     assert "M-0: BLOCKED" in snapshot.reminders
 
 
-def test_expired_clean_writer_is_reassigned(tmp_path):
+def test_expired_clean_writer_is_reassigned_to_different_agent(tmp_path):
     store = setup_store(tmp_path, 1)
     scheduler = build_scheduler(store, tmp_path)
-    LeaseManager(store).claim("M-0", "old-agent", ttl_seconds=600)
+    LeaseManager(store).claim("M-0", "codex-01", ttl_seconds=600)
     with store.connection() as conn:
         now = datetime.now(UTC).isoformat()
         conn.execute(
@@ -144,7 +144,7 @@ def test_expired_clean_writer_is_reassigned(tmp_path):
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                "old-exec", "M-0", "old-agent", "codex", "LOST", 1,
+                "old-exec", "M-0", "codex-01", "codex", "LOST", 1,
                 "/worktrees/old", "[]", "/tmp/out", "/tmp/err", "/tmp/result",
                 now, now,
             ),
@@ -152,7 +152,33 @@ def test_expired_clean_writer_is_reassigned(tmp_path):
     snapshot = scheduler.tick()
     assert len(snapshot.assigned) == 1
     assert snapshot.assigned[0].takeover is True
-    assert snapshot.assigned[0].agent_id != "old-agent"
+    assert snapshot.assigned[0].agent_id == "claude-01"
+
+
+def test_expired_writer_without_replacement_is_blocked(tmp_path):
+    store = setup_store(tmp_path, 1)
+    scheduler = MissionScheduler(
+        store,
+        workers=(WorkerSlot("codex-01", "codex"),),
+        adapters={"codex": FakeAdapter("codex")},
+        worktree_root=tmp_path / "worktrees",
+        max_parallel_writers=1,
+        git=FakeGit(),
+    )
+    LeaseManager(store).claim("M-0", "codex-01", ttl_seconds=600)
+    with store.connection() as conn:
+        conn.execute(
+            "UPDATE leases SET expires_at=? WHERE mission_id='M-0'",
+            ((datetime.now(UTC) - timedelta(seconds=1)).isoformat(),),
+        )
+
+    snapshot = scheduler.tick()
+
+    assert snapshot.assigned == ()
+    assert snapshot.expired == ("M-0",)
+    assert snapshot.blocked == (
+        "M-0: expired writer codex-01 has no different replacement worker available",
+    )
 
 
 def test_daily_report_summarizes_statuses(tmp_path):

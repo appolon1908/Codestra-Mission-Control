@@ -287,6 +287,24 @@ class MissionScheduler:
             role=worker.role,
         )
 
+    def _replacement_worker(
+        self,
+        mission: dict,
+        workers: list[WorkerSlot],
+    ) -> WorkerSlot | None:
+        if not workers:
+            return None
+
+        lease = self.leases.current(mission["mission_id"])
+        if not lease:
+            return workers[0]
+
+        for worker in workers:
+            if worker.agent_id != lease["agent_id"]:
+                return worker
+        return None
+
+
     def _dispatch_request(
         self,
         request: dict,
@@ -397,10 +415,10 @@ class MissionScheduler:
             role = AgentRole(request["role"])
             if role is AgentRole.MERGE_COORDINATOR:
                 continue
-            workers = idle_by_role.get(role, [])
-            if not workers:
+            role_workers = idle_by_role.get(role, [])
+            if not role_workers:
                 continue
-            worker = workers.pop(0)
+            worker = role_workers.pop(0)
             outcome = self._dispatch_request(request, worker)
             assigned.append(outcome)
             if outcome.state == "NOT_DISPATCHED":
@@ -413,11 +431,9 @@ class MissionScheduler:
             1 for lease in active if lease["role"] == AgentRole.WRITER.value
         )
         capacity = max(0, self.max_parallel_writers - writer_count)
-        workers = self._idle_workers(AgentRole.WRITER)[:capacity]
+        workers = self._idle_workers(AgentRole.WRITER)
         candidates = self._eligible_missions()
 
-        # Do not create a second writer assignment for a mission that already
-        # has a persisted redispatch request.
         requested_writer_missions = {
             row["mission_id"]
             for row in self.store.pending_dispatch_requests(role=AgentRole.WRITER)
@@ -428,15 +444,32 @@ class MissionScheduler:
             if mission["mission_id"] not in requested_writer_missions
         ]
 
-        for mission, worker in zip(candidates, workers):
-            if self.leases.current(mission["mission_id"]):
+        writer_assigned = 0
+        for mission in candidates:
+            if writer_assigned >= capacity or not workers:
+                break
+
+            lease = self.leases.current(mission["mission_id"])
+            if lease:
                 expired.append(mission["mission_id"])
+
+            worker = self._replacement_worker(mission, workers)
+            if worker is None:
+                blocked.append(
+                    f"{mission['mission_id']}: expired writer {lease['agent_id']} "
+                    "has no different replacement worker available"
+                )
+                continue
+
+            workers.remove(worker)
             outcome = self._dispatch(mission, worker)
             assigned.append(outcome)
             if outcome.state == "NOT_DISPATCHED":
                 blocked.append(
                     f"{outcome.mission_id}: {outcome.reason or 'dispatch failed'}"
                 )
+            else:
+                writer_assigned += 1
 
         active_after = self._active_leases()
         active_writers = sum(
