@@ -224,6 +224,11 @@ def test_scheduler_honors_persisted_reviewer_redispatch(tmp_path):
     rows = store.list_dispatch_requests(states=(DispatchState.RUNNING,))
     assert len(rows) == 1
     assert rows[0]["id"] == dispatch_id
+    launches = store.list_agent_launches()
+    assert len(launches) == 1
+    assert launches[0]["mission_id"] == "M-0"
+    assert launches[0]["agent_id"] == "claude-review"
+    assert launches[0]["role"] == AgentRole.REVIEWER.value
 
 
 def test_scheduler_does_not_count_reviewer_as_active_writer(tmp_path):

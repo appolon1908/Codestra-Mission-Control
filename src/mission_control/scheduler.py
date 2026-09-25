@@ -359,6 +359,13 @@ class MissionScheduler:
                 )
             adapter = self.adapters[worker.provider]
             execution: AgentExecution = adapter.dispatch(assignment)  # type: ignore[attr-defined]
+            self.telemetry.record_launch(
+                assignment,
+                execution,
+                role=role.value,
+                mission_level=1,
+                complexity_class="C3",
+            )
             self.store.update_dispatch_request(
                 int(request["id"]),
                 state=DispatchState.RUNNING,
