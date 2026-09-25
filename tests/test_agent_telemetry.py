@@ -92,3 +92,38 @@ def test_api_accepts_and_returns_launch_events(tmp_path):
     assert body["count"] == 1
     assert body["items"][0]["payload"]["agent_id"] == "claude-01"
     server.shutdown()
+
+
+def test_unreachable_telemetry_endpoint_does_not_raise(tmp_path):
+    store = make_store(tmp_path)
+    emitter = AgentTelemetryEmitter(
+        store,
+        endpoint="http://127.0.0.1:1/platform/v1/agents/launch-events",
+        timeout_seconds=0.1,
+        host_name="test-host",
+    )
+
+    payload = emitter.record_launch(assignment(), execution())
+
+    assert payload["delivery_state"] == "FAILED"
+    assert payload["delivery_error_type"]
+    row = store.list_agent_launches()[0]
+    persisted = json.loads(row["payload_json"])
+    assert persisted["delivery_state"] == "FAILED"
+
+
+def test_health_endpoint_is_available_on_runtime_server(tmp_path):
+    store = make_store(tmp_path)
+    server = AgentTelemetryAPI(store).server()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/healthz", timeout=3) as response:
+            body = json.load(response)
+        assert response.status == 200
+        assert body == {"status": "ok"}
+    finally:
+        server.shutdown()
+        server.server_close()
