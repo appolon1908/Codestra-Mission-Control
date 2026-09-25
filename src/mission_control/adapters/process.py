@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
+from mission_control.agent_telemetry import AgentTelemetryEmitter
 from mission_control.git_executor import FileFence, GitWorktreeExecutor
 from mission_control.lease import LeaseManager, LeaseNotOwned
 from mission_control.store import MissionStore
@@ -67,6 +68,7 @@ class ProcessAgentAdapter(ABC):
         self.executable = executable or self.discover_executable()
         self.python = python_executable or sys.executable
         self.git = GitWorktreeExecutor()
+        self.telemetry = AgentTelemetryEmitter(store)
 
     @abstractmethod
     def discover_executable(self) -> str:
@@ -226,7 +228,11 @@ class ProcessAgentAdapter(ABC):
         exit_code = row["exit_code"]
         session_id = row["session_id"]
 
-        if result_path.is_file():
+        previous_state = state
+        terminal_states = {"COMPLETED", "FAILED", "STOPPED", "LOST"}
+        if state in terminal_states:
+            pass
+        elif result_path.is_file():
             result = json.loads(result_path.read_text(encoding="utf-8"))
             exit_code = int(result["exit_code"])
             state = "COMPLETED" if exit_code == 0 else "FAILED"
@@ -242,7 +248,7 @@ class ProcessAgentAdapter(ABC):
             state = "LOST"
             self.store.update_agent_execution(execution_id, state=state)
 
-        return AgentExecution(
+        execution = AgentExecution(
             execution_id=execution_id,
             mission_id=row["mission_id"],
             agent_id=row["agent_id"],
@@ -256,6 +262,15 @@ class ProcessAgentAdapter(ABC):
             stderr_path=row["stderr_path"],
             result_path=row["result_path"],
         )
+        if state != previous_state:
+            event_type = {
+                "COMPLETED": "AGENT_COMPLETED",
+                "FAILED": "AGENT_FAILED",
+                "LOST": "AGENT_LOST",
+                "STOPPED": "AGENT_STOPPED",
+            }.get(state, "AGENT_STATE_CHANGED")
+            self.telemetry.record_execution_event(execution, event_type)
+        return execution
 
     def stop(self, execution_id: str) -> AgentExecution:
         row = self.store.get_agent_execution(execution_id)
@@ -276,7 +291,22 @@ class ProcessAgentAdapter(ABC):
                 except OSError:
                     pass
         self.store.update_agent_execution(execution_id, state="STOPPED")
-        return self.status(execution_id)
+        stopped = AgentExecution(
+            execution_id=execution_id,
+            mission_id=row["mission_id"],
+            agent_id=row["agent_id"],
+            provider=row["provider"],
+            state="STOPPED",
+            worktree=row["worktree"],
+            runner_pid=pid,
+            session_id=row["session_id"],
+            exit_code=row["exit_code"],
+            stdout_path=row["stdout_path"],
+            stderr_path=row["stderr_path"],
+            result_path=row["result_path"],
+        )
+        self.telemetry.record_execution_event(stopped, "AGENT_STOPPED", reason="requested_stop")
+        return stopped
 
     def validate_file_fence(
         self,
