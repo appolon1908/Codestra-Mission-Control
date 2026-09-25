@@ -189,6 +189,13 @@ class LeaseManager:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def is_owner(self, mission_id: str, agent_id: str) -> bool:
+        """True only while ``agent_id`` holds an unexpired lease on the mission."""
+        lease = self.current(mission_id)
+        if not lease or lease["agent_id"] != agent_id:
+            return False
+        return datetime.fromisoformat(lease["expires_at"]) > _now()
+
     def current(self, mission_id: str) -> dict | None:
         with self.store.connection() as conn:
             row = conn.execute(

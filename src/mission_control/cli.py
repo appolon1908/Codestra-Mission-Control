@@ -4,8 +4,17 @@ from __future__ import annotations
 import argparse
 import json
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 
+from .control_sync import (
+    DEFAULT_REQUIRED,
+    CheckpointEnvelope,
+    Surface,
+    SurfaceObservation,
+    reconcile,
+    utc_now,
+)
 from .controller import MissionController
 from .implementation_api import ImplementationAPI
 from .lease import LeaseManager
@@ -20,7 +29,9 @@ from .merge_coordinator import (
 )
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
 from .policy import ApprovalPolicy
+from .scheduler import WorkerSlot
 from .store import CompletionBlocked, MissionStore
+from .watchdog import EscalationPolicy, WatchdogMonitor
 from .worker_node import (
     NodeNotFound,
     NodeValidationError,
@@ -185,6 +196,43 @@ def main() -> None:
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
+    watchdog = sub.add_parser("watchdog-status")
+    watchdog.add_argument(
+        "--worker",
+        action="append",
+        default=[],
+        help="worker slot as AGENT_ID:PROVIDER (repeatable)",
+    )
+    watchdog.add_argument("--stale-heartbeat-seconds", type=int, default=300)
+    watchdog.add_argument("--escalate-after-seconds", type=int, default=900)
+    watchdog.add_argument("--owner-decision-after-seconds", type=int, default=3600)
+    watchdog.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="persist escalation changes before reading back",
+    )
+
+    observe = sub.add_parser("sync-observe")
+    observe.add_argument("--mission", required=True)
+    observe.add_argument("--agent", required=True)
+    observe.add_argument("--surface", choices=[s.value for s in Surface], required=True)
+    observe.add_argument("--status", required=True)
+    observe.add_argument("--head-sha")
+    observe.add_argument("--error")
+    observe.add_argument("--unavailable", action="store_true")
+    observe.add_argument("--observed-at", help="ISO-8601 timestamp; defaults to now")
+
+    readback = sub.add_parser("sync-readback")
+    readback.add_argument("--mission", required=True)
+    readback.add_argument("--head-sha", help="defaults to latest checkpoint, then mission HEAD")
+    readback.add_argument("--status", help="defaults to latest checkpoint state")
+    readback.add_argument("--request-complete", action="store_true")
+    readback.add_argument("--max-age-seconds", type=int, default=900)
+    readback.add_argument(
+        "--required",
+        default=",".join(s.value for s in DEFAULT_REQUIRED),
+        help="comma-separated required surfaces",
+    )
     node_register = sub.add_parser("node-register")
     node_register.add_argument("--node", required=True)
     node_register.add_argument("--capabilities-json", required=True)
@@ -240,6 +288,28 @@ def main() -> None:
         print(json.dumps({"ok": True, "mission": args.mission}))
         return
 
+    if args.command == "watchdog-status":
+        workers = []
+        for spec in args.worker:
+            agent_id, _, provider = spec.partition(":")
+            if not agent_id or not provider:
+                raise SystemExit(f"invalid --worker {spec!r}; expected AGENT_ID:PROVIDER")
+            workers.append(WorkerSlot(agent_id, provider))
+        monitor = WatchdogMonitor(
+            store,
+            workers=workers,
+            policy=EscalationPolicy(
+                stale_heartbeat_seconds=args.stale_heartbeat_seconds,
+                escalate_after_seconds=args.escalate_after_seconds,
+                owner_decision_after_seconds=args.owner_decision_after_seconds,
+            ),
+        )
+        evaluation = monitor.evaluate_escalations() if args.evaluate else None
+        payload = monitor.snapshot()
+        payload["evaluation"] = evaluation
+        print(json.dumps(payload, sort_keys=True, default=str))
+        return
+
     leases = LeaseManager(store)
 
     if args.command == "claim":
@@ -266,13 +336,29 @@ def main() -> None:
                     {
                         "ok": False,
                         "error": "completion_blocked",
-                        "status": args.status,
+                        "mission": exc.mission_id,
+                        "status": exc.status.value,
                         "reasons": exc.reasons,
-                    }
+                    },
+                    sort_keys=True,
                 )
             )
-            raise SystemExit(2) from None
+            raise SystemExit(2)
         print(json.dumps({"ok": True, "status": args.status}))
+        return
+
+    if args.command == "checkpoint":
+        checkpoint_id = store.record_checkpoint(
+            args.mission,
+            args.agent,
+            args.state,
+            head_sha=args.head_sha,
+            dirty_count=args.dirty_count,
+            tests=json.loads(args.tests_json),
+            blockers=args.blocker,
+            next_task_requested=args.request_next_task,
+        )
+        print(json.dumps({"ok": True, "checkpoint_id": checkpoint_id}))
         return
 
     coordinator = MergeCoordinator(store)
@@ -508,6 +594,68 @@ def main() -> None:
 
     if args.command == "expired":
         print(json.dumps({"expired": leases.expired_missions()}, sort_keys=True))
+        return
+
+    if args.command == "sync-observe":
+        if not store.get_mission(args.mission):
+            raise SystemExit(f"mission not found: {args.mission}")
+        if not leases.is_owner(args.mission, args.agent):
+            raise SystemExit(
+                f"ownership refused: {args.agent} does not hold the writer lease "
+                f"for {args.mission}"
+            )
+        observed_at = datetime.fromisoformat(args.observed_at) if args.observed_at else None
+        if observed_at is not None and observed_at.tzinfo is None:
+            raise SystemExit("--observed-at must include a timezone offset")
+        stored = store.record_surface_observation(
+            args.mission,
+            SurfaceObservation(
+                surface=Surface(args.surface),
+                available=not args.unavailable,
+                status=args.status,
+                head_sha=args.head_sha,
+                error=args.error,
+                observed_at=observed_at or utc_now(),
+            ),
+            agent_id=args.agent,
+        )
+        source = reconcile(
+            CheckpointEnvelope(args.mission, args.status, None),
+            [stored],
+            required=(),
+        ).sources[0]
+        print(json.dumps({"ok": True, "source": source.to_dict()}, sort_keys=True))
+        return
+
+    if args.command == "sync-readback":
+        mission = store.get_mission(args.mission)
+        if not mission:
+            raise SystemExit(f"mission not found: {args.mission}")
+        latest = store.latest_checkpoint(args.mission)
+        head_sha = args.head_sha or (latest["head_sha"] if latest else None) or mission["head_sha"]
+        status = args.status or (latest["state"] if latest else mission["status"])
+        required = tuple(Surface(x.strip()) for x in args.required.split(",") if x.strip())
+        checkpoint = CheckpointEnvelope(args.mission, status, head_sha, args.request_complete)
+        decision = reconcile(
+            checkpoint,
+            store.surface_observations(args.mission),
+            required=required,
+            max_age=timedelta(seconds=args.max_age_seconds),
+        )
+        print(
+            json.dumps(
+                {
+                    "mission": args.mission,
+                    "checkpoint": {
+                        "status": status,
+                        "head_sha": head_sha,
+                        "request_complete": args.request_complete,
+                    },
+                    "decision": decision.to_dict(),
+                },
+                sort_keys=True,
+            )
+        )
         return
 
     if args.command == "repositories":
