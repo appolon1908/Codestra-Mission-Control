@@ -59,6 +59,11 @@ def _discover(name: str, env_var: str | None = None) -> str | None:
             Path.home() / "AppData" / "Roaming" / "npm" / f"{name}.cmd",
             Path(r"C:\Users\Usuario\AppData\Roaming\npm") / f"{name}.cmd",
         ]
+        program_files = Path(os.getenv("ProgramFiles", r"C:\Program Files"))
+        if name == "tailscale":
+            candidates.append(program_files / "Tailscale" / "tailscale.exe")
+        elif name == "gh":
+            candidates.append(program_files / "GitHub CLI" / "gh.exe")
         for candidate in candidates:
             if candidate.is_file():
                 return str(candidate)
