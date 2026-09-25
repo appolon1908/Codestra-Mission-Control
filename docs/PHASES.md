@@ -47,3 +47,7 @@ Escalation levels are REMINDER → ESCALATED → OWNER_DECISION by condition age
 are recorded with `delivery=LOCAL_ONLY`; no SMS/email/call delivery is wired.
 `codestra-mission-control watchdog-status --worker codex-01:codex --evaluate` gives
 the same readback from the CLI.
+
+## CORE-AI-02 — Merge Coordinator
+Exact-SHA review/verification evidence, conflict classes 0-4, fail-closed merge-ready
+predicate, decision ledger, gated completion and HTTP API. See `MERGE_COORDINATOR.md`.

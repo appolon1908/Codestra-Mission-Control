@@ -151,6 +151,8 @@ class LeaseManager:
         return expires.isoformat()
 
     def release(self, mission_id: str, agent_id: str, *, next_status: MissionStatus) -> None:
+        if self.store.get_mission(mission_id):
+            self.store.require_transition(mission_id, next_status)
         with self.store.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             lease = conn.execute(

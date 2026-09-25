@@ -16,6 +16,20 @@ def _iso_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+# Statuses that assert merge readiness; entering them needs merge-coordinator authorization.
+GATED_STATUSES = frozenset({MissionStatus.MERGE_READY, MissionStatus.COMPLETE})
+
+
+class CompletionBlocked(RuntimeError):
+    def __init__(self, mission_id: str, status: MissionStatus, reasons: list[str]) -> None:
+        super().__init__(
+            f"{mission_id} cannot enter {status.value}: " + ", ".join(reasons)
+        )
+        self.mission_id = mission_id
+        self.status = status
+        self.reasons = reasons
+
+
 def _parse_ts(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
 
@@ -156,6 +170,37 @@ class MissionStore:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS head_evidence (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    role TEXT NOT NULL,
+                    head_sha TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    verdict TEXT NOT NULL,
+                    blockers_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS mission_dependencies (
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    depends_on TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (mission_id, depends_on)
+                );
+
+                CREATE TABLE IF NOT EXISTS merge_decisions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    head_sha TEXT,
+                    verdict TEXT NOT NULL,
+                    conflict_class INTEGER NOT NULL,
+                    next_gate TEXT NOT NULL,
+                    reasons_json TEXT NOT NULL,
+                    snapshot_json TEXT NOT NULL,
+                    ledger_seq INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS watchdog_escalations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mission_id TEXT NOT NULL,
@@ -226,6 +271,10 @@ class MissionStore:
 
                 CREATE INDEX IF NOT EXISTS idx_events_mission
                     ON events(mission_id, id);
+                CREATE INDEX IF NOT EXISTS idx_head_evidence_mission
+                    ON head_evidence(mission_id, role, id);
+                CREATE INDEX IF NOT EXISTS idx_merge_decisions_mission
+                    ON merge_decisions(mission_id, id);
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_watchdog_escalations_active
                     ON watchdog_escalations(mission_id, kind)
                     WHERE state != 'RESOLVED';
@@ -432,7 +481,15 @@ class MissionStore:
                 (mission_id,),
             ).fetchone()
 
+    def require_transition(self, mission_id: str, status: MissionStatus) -> None:
+        if status not in GATED_STATUSES:
+            return
+        authorization = self.merge_authorization(mission_id)
+        if not authorization["authorized"]:
+            raise CompletionBlocked(mission_id, status, authorization["reasons"])
+
     def set_status(self, mission_id: str, status: MissionStatus) -> None:
+        self.require_transition(mission_id, status)
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             changed = conn.execute(
@@ -931,6 +988,416 @@ class MissionStore:
                 (mission_id,),
             ).fetchone()
             return ApprovalLevel(int(row["level"] or 0))
+
+    def record_mission_head(self, mission_id: str, head_sha: str, actor: str) -> dict:
+        """Bind the mission to a new exact head; any MERGE_READY state is revoked."""
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            mission = conn.execute(
+                "SELECT head_sha, status FROM missions WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            if not mission:
+                conn.execute("ROLLBACK")
+                raise KeyError(mission_id)
+            previous = mission["head_sha"]
+            status = mission["status"]
+            changed = previous != head_sha
+            if changed and status == MissionStatus.MERGE_READY.value:
+                status = MissionStatus.IN_REVIEW.value
+            stale = conn.execute(
+                """
+                SELECT count(*) AS n FROM head_evidence
+                WHERE mission_id=? AND head_sha<>?
+                """,
+                (mission_id, head_sha),
+            ).fetchone()["n"]
+            conn.execute(
+                "UPDATE missions SET head_sha=?, status=?, updated_at=? WHERE mission_id=?",
+                (head_sha, status, _iso_now(), mission_id),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "HEAD_RECORDED",
+                actor,
+                {"previous_head_sha": previous, "head_sha": head_sha, "changed": changed},
+            )
+            conn.execute("COMMIT")
+        return {
+            "mission_id": mission_id,
+            "previous_head_sha": previous,
+            "head_sha": head_sha,
+            "changed": changed,
+            "status": status,
+            "stale_evidence_count": int(stale),
+        }
+
+    def record_head_evidence(
+        self,
+        mission_id: str,
+        *,
+        role: str,
+        head_sha: str,
+        actor: str,
+        verdict: str,
+        blockers: list[str],
+    ) -> int:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                """
+                INSERT INTO head_evidence (
+                    mission_id, role, head_sha, actor, verdict, blockers_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mission_id,
+                    role,
+                    head_sha,
+                    actor,
+                    verdict,
+                    json.dumps(blockers),
+                    _iso_now(),
+                ),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "HEAD_EVIDENCE_RECORDED",
+                actor,
+                {"role": role, "head_sha": head_sha, "verdict": verdict, "blockers": blockers},
+            )
+            conn.execute("COMMIT")
+            return int(cursor.lastrowid)
+
+    def head_evidence(self, mission_id: str, role: str) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    """
+                    SELECT * FROM head_evidence
+                    WHERE mission_id=? AND role=?
+                    ORDER BY id DESC
+                    """,
+                    (mission_id, role),
+                )
+            )
+
+    def writer_agents(self, mission_id: str) -> set[str]:
+        """Every agent that ever held the writer lease or recorded a mission head."""
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT agent_id, event_type, payload_json FROM events
+                WHERE mission_id=? AND agent_id IS NOT NULL
+                  AND event_type IN ('LEASE_CLAIMED', 'LEASE_TAKEOVER', 'HEAD_RECORDED')
+                """,
+                (mission_id,),
+            ).fetchall()
+            current = conn.execute(
+                "SELECT agent_id, role FROM leases WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+        writers = set()
+        for row in rows:
+            if row["event_type"] == "HEAD_RECORDED":
+                writers.add(row["agent_id"])
+                continue
+            role = json.loads(row["payload_json"]).get("role")
+            if role in (None, "WRITER"):
+                writers.add(row["agent_id"])
+        if current and current["role"] == "WRITER":
+            writers.add(current["agent_id"])
+        return writers
+
+    def add_dependency(self, mission_id: str, depends_on: str) -> None:
+        if mission_id == depends_on:
+            raise ValueError("mission cannot depend on itself")
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if not conn.execute(
+                "SELECT 1 FROM missions WHERE mission_id=?", (mission_id,)
+            ).fetchone():
+                conn.execute("ROLLBACK")
+                raise KeyError(mission_id)
+            # Reject edges that would close a cycle: depends_on must not reach mission_id.
+            frontier = [depends_on]
+            seen: set[str] = set()
+            while frontier:
+                node = frontier.pop()
+                if node == mission_id:
+                    conn.execute("ROLLBACK")
+                    raise ValueError(f"dependency cycle: {mission_id} -> {depends_on}")
+                if node in seen:
+                    continue
+                seen.add(node)
+                frontier.extend(
+                    row["depends_on"]
+                    for row in conn.execute(
+                        "SELECT depends_on FROM mission_dependencies WHERE mission_id=?",
+                        (node,),
+                    )
+                )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO mission_dependencies (mission_id, depends_on, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (mission_id, depends_on, _iso_now()),
+            )
+            self._event(conn, mission_id, "DEPENDENCY_ADDED", None, {"depends_on": depends_on})
+            conn.execute("COMMIT")
+
+    def dependencies(self, mission_id: str) -> list[str]:
+        with self.connection() as conn:
+            return [
+                row["depends_on"]
+                for row in conn.execute(
+                    """
+                    SELECT depends_on FROM mission_dependencies
+                    WHERE mission_id=? ORDER BY depends_on
+                    """,
+                    (mission_id,),
+                )
+            ]
+
+    def record_merge_decision(
+        self,
+        mission_id: str,
+        *,
+        head_sha: str | None,
+        verdict: str,
+        conflict_class: int,
+        next_gate: str,
+        reasons: list[str],
+        snapshot: dict,
+        next_status: MissionStatus | None,
+    ) -> int:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            seq_row = conn.execute(
+                "SELECT coalesce(max(id), 0) AS seq FROM events WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            cursor = conn.execute(
+                """
+                INSERT INTO merge_decisions (
+                    mission_id, head_sha, verdict, conflict_class, next_gate,
+                    reasons_json, snapshot_json, ledger_seq, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mission_id,
+                    head_sha,
+                    verdict,
+                    conflict_class,
+                    next_gate,
+                    json.dumps(reasons),
+                    json.dumps(snapshot, sort_keys=True),
+                    int(seq_row["seq"]),
+                    _iso_now(),
+                ),
+            )
+            if next_status is not None:
+                conn.execute(
+                    "UPDATE missions SET status=?, updated_at=? WHERE mission_id=?",
+                    (next_status.value, _iso_now(), mission_id),
+                )
+            self._event(
+                conn,
+                mission_id,
+                "MERGE_DECISION_RECORDED",
+                None,
+                {
+                    "decision_id": int(cursor.lastrowid),
+                    "head_sha": head_sha,
+                    "verdict": verdict,
+                    "conflict_class": conflict_class,
+                    "next_gate": next_gate,
+                    "reasons": reasons,
+                },
+            )
+            conn.execute("COMMIT")
+            return int(cursor.lastrowid)
+
+    def latest_merge_decision(self, mission_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM merge_decisions
+                WHERE mission_id=? ORDER BY id DESC LIMIT 1
+                """,
+                (mission_id,),
+            ).fetchone()
+
+    def merge_authorization(self, mission_id: str) -> dict:
+        """Fail-closed: authorized only by a current MERGE_READY decision on the exact head."""
+        mission = self.get_mission(mission_id)
+        if not mission:
+            raise KeyError(mission_id)
+        head = mission["head_sha"]
+        decision = self.latest_merge_decision(mission_id)
+        reasons: list[str] = []
+        if not head:
+            reasons.append("NO_MISSION_HEAD")
+        if decision is None:
+            reasons.append("NO_MERGE_DECISION")
+        else:
+            if decision["verdict"] != "MERGE_READY":
+                reasons.append("MERGE_DECISION_BLOCKED")
+            if decision["head_sha"] != head:
+                reasons.append("MERGE_DECISION_STALE_HEAD")
+            with self.connection() as conn:
+                superseding = conn.execute(
+                    """
+                    SELECT count(*) AS n FROM events
+                    WHERE mission_id=? AND id>?
+                      AND event_type IN (
+                        'HEAD_RECORDED', 'HEAD_EVIDENCE_RECORDED', 'DEPENDENCY_ADDED'
+                      )
+                    """,
+                    (mission_id, decision["ledger_seq"]),
+                ).fetchone()["n"]
+            if superseding:
+                reasons.append("MERGE_DECISION_SUPERSEDED")
+        return {
+            "mission_id": mission_id,
+            "authorized": not reasons,
+            "head_sha": head,
+            "decision_id": decision["id"] if decision else None,
+            "reasons": reasons,
+        }
+
+    def upsert_worker_node(self, node_id: str, capabilities: dict) -> None:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO worker_nodes (
+                    node_id, hostname, os, lanes_json, capabilities_json,
+                    production_effects_enabled, registered_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(node_id) DO UPDATE SET
+                    hostname=excluded.hostname,
+                    os=excluded.os,
+                    lanes_json=excluded.lanes_json,
+                    capabilities_json=excluded.capabilities_json,
+                    production_effects_enabled=excluded.production_effects_enabled,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    node_id,
+                    capabilities["hostname"],
+                    capabilities["os"],
+                    json.dumps(capabilities["lanes"]),
+                    json.dumps(capabilities, sort_keys=True),
+                    int(bool(capabilities.get("production_effects_enabled"))),
+                    now,
+                    now,
+                ),
+            )
+            self._event(
+                conn,
+                f"node:{node_id}",
+                "WORKER_NODE_REGISTERED",
+                None,
+                {
+                    "lanes": capabilities["lanes"],
+                    "providers": capabilities.get("providers", []),
+                },
+            )
+            conn.execute("COMMIT")
+
+    def record_worker_heartbeat(self, node_id: str, at: str) -> bool:
+        with self.connection() as conn:
+            changed = conn.execute(
+                "UPDATE worker_nodes SET last_heartbeat_at=? WHERE node_id=?",
+                (at, node_id),
+            ).rowcount
+            return bool(changed)
+
+    def record_provider_auth(self, node_id: str, status: dict) -> None:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO worker_provider_auth (
+                    node_id, provider, authenticated, auth_method, exit_code,
+                    detail, checked_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(node_id, provider) DO UPDATE SET
+                    authenticated=excluded.authenticated,
+                    auth_method=excluded.auth_method,
+                    exit_code=excluded.exit_code,
+                    detail=excluded.detail,
+                    checked_at=excluded.checked_at
+                """,
+                (
+                    node_id,
+                    status["provider"],
+                    int(bool(status["authenticated"])),
+                    status.get("auth_method"),
+                    status.get("exit_code"),
+                    status.get("detail"),
+                    status["checked_at"],
+                ),
+            )
+            self._event(
+                conn,
+                f"node:{node_id}",
+                "WORKER_PROVIDER_AUTH_RECORDED",
+                None,
+                {
+                    "provider": status["provider"],
+                    "authenticated": bool(status["authenticated"]),
+                },
+            )
+            conn.execute("COMMIT")
+
+    @staticmethod
+    def _worker_node_payload(row: sqlite3.Row) -> dict:
+        item = dict(row)
+        item["lanes"] = json.loads(item.pop("lanes_json"))
+        item["capabilities"] = json.loads(item.pop("capabilities_json"))
+        item["production_effects_enabled"] = bool(item["production_effects_enabled"])
+        return item
+
+    def get_worker_node(self, node_id: str) -> dict | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM worker_nodes WHERE node_id=?",
+                (node_id,),
+            ).fetchone()
+        return self._worker_node_payload(row) if row else None
+
+    def list_worker_nodes(self) -> list[dict]:
+        with self.connection() as conn:
+            rows = list(conn.execute("SELECT * FROM worker_nodes ORDER BY node_id"))
+        return [self._worker_node_payload(row) for row in rows]
+
+    def list_provider_auth(self, node_id: str) -> list[dict]:
+        with self.connection() as conn:
+            rows = list(
+                conn.execute(
+                    """
+                    SELECT provider, authenticated, auth_method, exit_code, detail, checked_at
+                    FROM worker_provider_auth
+                    WHERE node_id=?
+                    ORDER BY provider
+                    """,
+                    (node_id,),
+                )
+            )
+        items = [dict(row) for row in rows]
+        for item in items:
+            item["authenticated"] = bool(item["authenticated"])
+        return items
 
     def list_leases(self) -> list[sqlite3.Row]:
         with self.connection() as conn:
