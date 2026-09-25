@@ -91,6 +91,28 @@ class MissionStore:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS agent_launch_events (
+                    event_id TEXT PRIMARY KEY,
+                    execution_id TEXT NOT NULL,
+                    mission_id TEXT NOT NULL,
+                    agent_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    repository TEXT NOT NULL,
+                    worktree TEXT NOT NULL,
+                    branch TEXT NOT NULL,
+                    head_sha TEXT NOT NULL,
+                    mission_level INTEGER NOT NULL,
+                    complexity_class TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_agent_launch_events_created
+                    ON agent_launch_events(created_at DESC);
+
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
@@ -305,6 +327,51 @@ class MissionStore:
                 """,
                 (mission_id,),
             ).fetchone()
+
+    def record_agent_launch(self, payload: dict[str, object]) -> None:
+        created_at = str(payload.get("created_at") or _iso_now())
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO agent_launch_events (
+                    event_id, execution_id, mission_id, agent_id, provider, role,
+                    host, repository, worktree, branch, head_sha, mission_level,
+                    complexity_class, state, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(payload["event_id"]),
+                    str(payload["execution_id"]),
+                    str(payload["mission_id"]),
+                    str(payload["agent_id"]),
+                    str(payload["provider"]),
+                    str(payload["role"]),
+                    str(payload["host"]),
+                    str(payload["repository"]),
+                    str(payload["worktree"]),
+                    str(payload["branch"]),
+                    str(payload["head_sha"]),
+                    int(payload["mission_level"]),
+                    str(payload["complexity_class"]),
+                    str(payload["state"]),
+                    json.dumps(payload, sort_keys=True),
+                    created_at,
+                ),
+            )
+
+    def list_agent_launches(self, *, limit: int = 100) -> list[sqlite3.Row]:
+        safe_limit = min(500, max(1, int(limit)))
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    """
+                    SELECT * FROM agent_launch_events
+                    ORDER BY created_at DESC, event_id DESC
+                    LIMIT ?
+                    """,
+                    (safe_limit,),
+                )
+            )
 
     def latest_checkpoint(self, mission_id: str) -> sqlite3.Row | None:
         with self.connection() as conn:

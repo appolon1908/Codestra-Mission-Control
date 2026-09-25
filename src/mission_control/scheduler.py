@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .adapters.base import AgentAssignment, AgentExecution
+from .agent_telemetry import AgentTelemetryEmitter
 from .git_executor import GitWorktreeExecutor
 from .lease import LeaseManager
 from .models import AgentRole, MissionStatus
@@ -51,6 +52,7 @@ class MissionScheduler:
         max_parallel_writers: int = 3,
         lease_ttl_seconds: int = 600,
         git: GitWorktreeExecutor | None = None,
+        telemetry: AgentTelemetryEmitter | None = None,
     ) -> None:
         if max_parallel_writers < 1 or max_parallel_writers > 3:
             raise ValueError("max_parallel_writers must be between 1 and 3")
@@ -63,6 +65,7 @@ class MissionScheduler:
         self.max_parallel_writers = max_parallel_writers
         self.lease_ttl_seconds = lease_ttl_seconds
         self.git = git or GitWorktreeExecutor()
+        self.telemetry = telemetry or AgentTelemetryEmitter(store)
 
     @staticmethod
     def _now() -> datetime:
@@ -205,6 +208,13 @@ class MissionScheduler:
             assignment = self._prepare_assignment(mission, worker, takeover=takeover)
             adapter = self.adapters[worker.provider]
             execution: AgentExecution = adapter.dispatch(assignment)  # type: ignore[attr-defined]
+            self.telemetry.record_launch(
+                assignment,
+                execution,
+                role=AgentRole.WRITER.value,
+                mission_level=1,
+                complexity_class="C3",
+            )
             return DispatchOutcome(
                 mission["mission_id"],
                 worker.agent_id,
