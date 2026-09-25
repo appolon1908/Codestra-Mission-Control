@@ -14,6 +14,17 @@
       ]
     },
     {
+      "hostname": "codestra-desktop-ubuntu",
+      "dns": "codestra-desktop-ubuntu.tail4a23a1.ts.net.",
+      "ipv4": "100.74.74.86",
+      "os": "linux",
+      "online": true,
+      "roles": [
+        "workstation",
+        "agent-worker"
+      ]
+    },
+    {
       "hostname": "codestra-laptop-appolon",
       "dns": "codestra-laptop-appolon.tail4a23a1.ts.net.",
       "ipv4": "100.64.209.77",
