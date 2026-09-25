@@ -7,6 +7,7 @@ import os
 import socket
 import urllib.request
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .adapters.base import AgentAssignment, AgentExecution
 from .store import MissionStore
+from .worker_readiness import collect_worker_readiness
 
 
 def utcnow_iso() -> str:
@@ -88,13 +90,21 @@ class AgentTelemetryEmitter:
 
 
 class AgentTelemetryAPI:
-    def __init__(self, store: MissionStore, *, bearer_token: str | None = None) -> None:
+    def __init__(
+        self,
+        store: MissionStore,
+        *,
+        bearer_token: str | None = None,
+        readiness_provider: Callable[[], dict[str, object]] | None = None,
+    ) -> None:
         self.store = store
         self.bearer_token = bearer_token
+        self.readiness_provider = readiness_provider
 
     def handler(self) -> type[BaseHTTPRequestHandler]:
         store = self.store
         bearer_token = self.bearer_token
+        readiness_provider = self.readiness_provider
 
         class Handler(BaseHTTPRequestHandler):
             server_version = "CodestraAgentTelemetry/1.0"
@@ -127,6 +137,23 @@ class AgentTelemetryAPI:
                 parsed = urlparse(self.path)
                 if parsed.path == "/healthz":
                     self._json(200, {"status": "ok"})
+                    return
+                if parsed.path == "/platform/v1/workers/readiness":
+                    if not self._require_authorized():
+                        return
+                    if readiness_provider is None:
+                        self._json(503, {"error": "readiness_provider_unavailable"})
+                        return
+                    try:
+                        self._json(200, readiness_provider())
+                    except Exception as exc:  # noqa: BLE001
+                        self._json(
+                            503,
+                            {
+                                "error": "readiness_probe_failed",
+                                "detail": type(exc).__name__,
+                            },
+                        )
                     return
                 if parsed.path == "/platform/v1/agents/launch-events":
                     if not self._require_authorized():
@@ -210,7 +237,11 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(
             "MISSION_CONTROL_AGENT_TELEMETRY_TOKEN is required for non-loopback binding"
         )
-    server = AgentTelemetryAPI(store, bearer_token=bearer_token).server(
+    server = AgentTelemetryAPI(
+        store,
+        bearer_token=bearer_token,
+        readiness_provider=lambda: collect_worker_readiness().as_dict(),
+    ).server(
         host=args.host,
         port=args.port,
     )

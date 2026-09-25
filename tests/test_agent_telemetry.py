@@ -201,3 +201,40 @@ def test_health_response_sets_security_headers(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_worker_readiness_endpoint_is_authenticated_and_machine_readable(tmp_path):
+    store = make_store(tmp_path)
+    payload = {
+        "host": "worker-1",
+        "ready": False,
+        "checks": [{"name": "codex", "ok": False, "detail": "Not logged in"}],
+    }
+    server = AgentTelemetryAPI(
+        store,
+        bearer_token="secret-token",
+        readiness_provider=lambda: payload,
+    ).server()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    url = f"http://{host}:{port}/platform/v1/workers/readiness"
+
+    try:
+        try:
+            urllib.request.urlopen(url, timeout=3)
+            raise AssertionError("unauthorized readiness request unexpectedly succeeded")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": "Bearer secret-token"},
+        )
+        with urllib.request.urlopen(req, timeout=3) as response:
+            body = json.load(response)
+        assert response.status == 200
+        assert body == payload
+    finally:
+        server.shutdown()
+        server.server_close()
