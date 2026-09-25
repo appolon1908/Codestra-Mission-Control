@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -15,16 +16,41 @@ from .control_sync import (
     utc_now,
 )
 from .controller import MissionController
+from .implementation_api import ImplementationAPI
 from .lease import LeaseManager
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
 from .policy import ApprovalPolicy
 from .store import MissionStore
+from .worker_node import (
+    NodeNotFound,
+    NodeValidationError,
+    WorkerLane,
+    WorkerNodeRegistry,
+    probe_local_capabilities,
+)
 
 
 def _store(path: str) -> MissionStore:
     store = MissionStore(Path(path))
     store.initialize()
     return store
+
+
+def _provider_probes(store: MissionStore, runtime_root: Path, providers: list[str]) -> dict:
+    from .adapters.claude import ClaudeAdapter
+    from .adapters.codex import CodexAdapter
+
+    adapter_types = {"claude": ClaudeAdapter, "codex": CodexAdapter}
+    probes: dict = {}
+    for provider in providers:
+        adapter_type = adapter_types[provider]
+
+        def probe(provider: str = provider, adapter_type=adapter_type) -> dict:
+            adapter = adapter_type(store, runtime_root=runtime_root / provider)
+            return adapter.auth_status()
+
+        probes[provider] = probe
+    return probes
 
 
 def main() -> None:
@@ -85,6 +111,37 @@ def main() -> None:
     status = sub.add_parser("status")
     status.add_argument("--mission", required=True)
 
+    implementation_start = sub.add_parser("implementation-start")
+    implementation_start.add_argument("--execution-id")
+    implementation_start.add_argument("--mission", required=True)
+    implementation_start.add_argument("--agent", required=True)
+    implementation_start.add_argument("--workstation", required=True)
+    implementation_start.add_argument("--provider", required=True)
+    implementation_start.add_argument("--branch", required=True)
+    implementation_start.add_argument("--worktree", required=True)
+    implementation_start.add_argument("--api-required", action="store_true")
+
+    implementation_proof = sub.add_parser("implementation-proof")
+    implementation_proof.add_argument("--execution", required=True)
+    implementation_proof.add_argument("--implementation-file", action="append", default=[])
+    implementation_proof.add_argument("--api-endpoint", action="append", default=[])
+    implementation_proof.add_argument("--tests-json", default="{}")
+    implementation_proof.add_argument("--local-sha")
+    implementation_proof.add_argument("--pushed-sha")
+    implementation_proof.add_argument("--pr-number", type=int)
+    implementation_proof.add_argument("--pr-url")
+    implementation_proof.add_argument("--pr-head-sha")
+
+    implementation_status = sub.add_parser("implementation-status")
+    implementation_status.add_argument("--execution", required=True)
+
+    implementation_list = sub.add_parser("implementation-list")
+    implementation_list.add_argument("--state", action="append", default=[])
+
+    implementation_api = sub.add_parser("serve-implementation-api")
+    implementation_api.add_argument("--host", default="127.0.0.1")
+    implementation_api.add_argument("--port", type=int, default=8790)
+
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
@@ -109,6 +166,38 @@ def main() -> None:
         default=",".join(s.value for s in DEFAULT_REQUIRED),
         help="comma-separated required surfaces",
     )
+    node_register = sub.add_parser("node-register")
+    node_register.add_argument("--node", required=True)
+    node_register.add_argument("--capabilities-json", required=True)
+
+    node_probe = sub.add_parser("node-probe")
+    node_probe.add_argument("--node", required=True)
+    node_probe.add_argument(
+        "--lane",
+        action="append",
+        choices=[lane.value for lane in WorkerLane],
+        default=[],
+    )
+    node_probe.add_argument(
+        "--provider", action="append", choices=["claude", "codex"], default=[]
+    )
+    node_probe.add_argument("--worktree-root", required=True)
+    node_probe.add_argument("--tailnet-dns")
+    node_probe.add_argument("--max-parallel", type=int, default=3)
+    node_probe.add_argument("--runtime-root", default=".runtime/worker-node")
+    node_probe.add_argument("--skip-auth", action="store_true")
+
+    node_heartbeat = sub.add_parser("node-heartbeat")
+    node_heartbeat.add_argument("--node", required=True)
+
+    node_status = sub.add_parser("node-status")
+    node_status.add_argument("--node", required=True)
+
+    sub.add_parser("nodes")
+
+    node_api = sub.add_parser("serve-worker-node-api")
+    node_api.add_argument("--host", default="127.0.0.1")
+    node_api.add_argument("--port", type=int, default=8791)
 
     args = parser.parse_args()
     store = _store(args.db)
@@ -166,6 +255,105 @@ def main() -> None:
             next_task_requested=args.request_next_task,
         )
         print(json.dumps({"ok": True, "checkpoint_id": checkpoint_id}))
+        return
+
+    if args.command == "implementation-start":
+        execution_id = args.execution_id or f"impl-{uuid.uuid4().hex}"
+        agent_number = store.start_implementation_execution(
+            execution_id=execution_id,
+            mission_id=args.mission,
+            agent_id=args.agent,
+            workstation=args.workstation,
+            provider=args.provider,
+            branch=args.branch,
+            worktree=args.worktree,
+            api_required=args.api_required,
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "execution_id": execution_id,
+                    "agent_number": agent_number,
+                    "state": "STARTED",
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "implementation-proof":
+        decision = store.record_implementation_proof(
+            args.execution,
+            implementation_files=args.implementation_file,
+            api_endpoints=args.api_endpoint,
+            tests=json.loads(args.tests_json),
+            local_commit_sha=args.local_sha,
+            pushed_branch_sha=args.pushed_sha,
+            pr_number=args.pr_number,
+            pr_url=args.pr_url,
+            pr_head_sha=args.pr_head_sha,
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": decision.eligible_for_review,
+                    "state": decision.state.value,
+                    "push_proven": decision.push_proven,
+                    "eligible_for_review": decision.eligible_for_review,
+                    "reasons": list(decision.reasons),
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "implementation-status":
+        row = store.get_implementation_execution(args.execution)
+        if not row:
+            raise SystemExit(f"implementation execution not found: {args.execution}")
+        payload = dict(row)
+        for key in ("implementation_files_json", "api_endpoints_json", "tests_json"):
+            payload[key.removesuffix("_json")] = json.loads(payload.pop(key))
+        payload["api_required"] = bool(payload["api_required"])
+        payload["proof_matched"] = bool(payload["proof_matched"])
+        print(json.dumps(payload, sort_keys=True))
+        return
+
+    if args.command == "implementation-list":
+        states = tuple(args.state) if args.state else None
+        rows = [dict(row) for row in store.list_implementation_executions(states=states)]
+        print(
+            json.dumps(
+                {
+                    "count": len(rows),
+                    "proven": sum(row["state"] == "PROVEN" for row in rows),
+                    "needs_rework": sum(
+                        row["state"] == "NEEDS_REWORK" for row in rows
+                    ),
+                    "executions": rows,
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "serve-implementation-api":
+        server = ImplementationAPI(store).server(args.host, args.port)
+        host, port = server.server_address
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "service": "mission-control-implementation-api",
+                    "host": host,
+                    "port": port,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        server.serve_forever()
         return
 
     if args.command == "approve":
@@ -292,6 +480,77 @@ def main() -> None:
             )
         )
         return
+
+    if args.command.startswith("node") or args.command == "serve-worker-node-api":
+        registry = WorkerNodeRegistry(store)
+        try:
+            payload = _node_command(args, store, registry)
+        except NodeValidationError as exc:
+            raise SystemExit(json.dumps({"error": "invalid_worker_node", "errors": exc.errors}))
+        except NodeNotFound as exc:
+            raise SystemExit(json.dumps({"error": "node_not_found", "node_id": exc.args[0]}))
+        if payload is not None:
+            print(json.dumps(payload, sort_keys=True))
+        return
+
+
+def _node_command(args, store: MissionStore, registry: WorkerNodeRegistry) -> dict | None:
+    if args.command == "node-register":
+        return registry.register(args.node, json.loads(args.capabilities_json))
+
+    if args.command == "node-probe":
+        body = probe_local_capabilities(
+            args.node,
+            lanes=args.lane or [WorkerLane.BUILDER.value],
+            providers=args.provider or ["claude", "codex"],
+            worktree_root=args.worktree_root,
+            tailnet_dns=args.tailnet_dns,
+            max_parallel_writers=args.max_parallel,
+        )
+        registry.register(args.node, body)
+        registry.heartbeat(args.node)
+        if not args.skip_auth:
+            registry.probe_auth(
+                args.node,
+                _provider_probes(store, Path(args.runtime_root), body["providers"]),
+            )
+        return registry.snapshot(args.node)
+
+    if args.command == "node-heartbeat":
+        at = registry.heartbeat(args.node)
+        return {
+            "node_id": args.node,
+            "last_heartbeat_at": at,
+            "readiness": registry.readiness(args.node).as_payload(),
+        }
+
+    if args.command == "node-status":
+        return registry.snapshot(args.node)
+
+    if args.command == "nodes":
+        items = registry.list()
+        return {
+            "count": len(items),
+            "implementation_ready": sum(
+                1 for item in items if item["readiness"]["implementation_ready"]
+            ),
+            "items": items,
+        }
+
+    if args.command == "serve-worker-node-api":
+        from .worker_node_api import WorkerNodeAPI
+
+        server = WorkerNodeAPI(store).server(args.host, args.port)
+        print(
+            json.dumps({"ok": True, "host": args.host, "port": server.server_address[1]}),
+            flush=True,
+        )
+        try:
+            server.serve_forever()
+        finally:
+            server.server_close()
+        return None
+    return None
 
 
 if __name__ == "__main__":
