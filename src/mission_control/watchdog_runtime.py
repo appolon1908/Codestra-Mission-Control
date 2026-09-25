@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .adapters.claude import ClaudeAdapter
 from .adapters.codex import CodexAdapter
+from .checkpoint_dispatch import CheckpointDispatcher
 from .scheduler import MissionScheduler, WorkerSlot
 from .store import MissionStore
 
@@ -72,9 +73,17 @@ def main() -> int:
         worktree_root=Path(args.worktree_root),
         max_parallel=args.max_parallel,
     )
+    dispatcher = CheckpointDispatcher(scheduler.store)
     while True:
+        decisions = dispatcher.run()
         snapshot = scheduler.tick()
-        print(json.dumps(snapshot, default=lambda value: value.__dict__, sort_keys=True))
+        print(
+            json.dumps(
+                {"dispatch_decisions": decisions, "snapshot": snapshot},
+                default=lambda value: value.__dict__,
+                sort_keys=True,
+            )
+        )
         if args.once:
             return 0
         time.sleep(max(args.interval, 5))
