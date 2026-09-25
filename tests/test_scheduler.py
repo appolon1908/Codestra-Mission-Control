@@ -164,7 +164,6 @@ def test_daily_report_summarizes_statuses(tmp_path):
     assert report["status_counts"]["IN_REVIEW"] == 1
     assert "M-1: IN_REVIEW" in report["reminders"]
 
-
 def test_scheduler_honors_persisted_reviewer_redispatch(tmp_path):
     store = setup_store(tmp_path, 1)
     store.update_mission_workspace(
@@ -225,3 +224,15 @@ def test_scheduler_does_not_count_reviewer_as_active_writer(tmp_path):
     )
     snapshot = scheduler.tick()
     assert snapshot.active_writers == 0
+
+
+def test_scheduler_records_launch_telemetry(tmp_path):
+    store = setup_store(tmp_path, 1)
+    scheduler = build_scheduler(store, tmp_path)
+    snapshot = scheduler.tick()
+    assert len(snapshot.assigned) == 1
+    rows = store.list_agent_launches()
+    assert len(rows) == 1
+    assert rows[0]["mission_id"] == "M-0"
+    assert rows[0]["agent_id"] == snapshot.assigned[0].agent_id
+    assert rows[0]["state"] == "RUNNING"
