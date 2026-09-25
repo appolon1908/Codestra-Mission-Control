@@ -93,6 +93,13 @@ if workflow is not None:
                         start_to_close_timeout=timedelta(minutes=2),
                         retry_policy=retry,
                     )
+                elif action == "NEXT_IMPLEMENTATION":
+                    await workflow.execute_activity(
+                        "request_successor_implementation",
+                        mission_id,
+                        start_to_close_timeout=timedelta(minutes=2),
+                        retry_policy=retry,
+                    )
 
                 if self._last_signal:
                     signal_payload = dict(self._last_signal)
