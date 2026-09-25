@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .checkpoint_dispatch import CheckpointDispatcher, ImplementationProof
 from .controller import MissionController
 from .lease import LeaseManager
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
@@ -33,6 +34,7 @@ def main() -> None:
     create.add_argument("--worktree")
     create.add_argument("--base-sha")
     create.add_argument("--approval", type=int, default=int(ApprovalLevel.LOCAL_WRITE))
+    create.add_argument("--acceptance", action="append", default=[])
 
     claim = sub.add_parser("claim")
     claim.add_argument("--mission", required=True)
@@ -76,6 +78,30 @@ def main() -> None:
     status = sub.add_parser("status")
     status.add_argument("--mission", required=True)
 
+    dispatch_proof = sub.add_parser("dispatch-proof")
+    dispatch_proof.add_argument("--mission", required=True)
+    dispatch_proof.add_argument("--agent", required=True)
+    dispatch_proof.add_argument("--execution")
+    dispatch_proof.add_argument("--implementation-file", action="append", default=[])
+    dispatch_proof.add_argument("--api-endpoint", action="append", default=[])
+    dispatch_proof.add_argument("--tests-json", default="{}")
+    dispatch_proof.add_argument("--local-sha")
+    dispatch_proof.add_argument("--pushed-sha")
+    dispatch_proof.add_argument("--pr-number", type=int)
+    dispatch_proof.add_argument("--pr-url")
+    dispatch_proof.add_argument("--pr-head-sha")
+    dispatch_proof.add_argument("--next-slice")
+
+    dispatch_run = sub.add_parser("dispatch-run")
+    dispatch_run.add_argument("--limit", type=int, default=100)
+
+    dispatch_state = sub.add_parser("dispatch-state")
+    dispatch_state.add_argument("--recent", type=int, default=20)
+
+    dispatch_serve = sub.add_parser("dispatch-serve")
+    dispatch_serve.add_argument("--host", default="127.0.0.1")
+    dispatch_serve.add_argument("--port", type=int, default=8765)
+
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
@@ -96,9 +122,71 @@ def main() -> None:
                 worktree=args.worktree,
                 base_sha=args.base_sha,
                 required_approval=ApprovalLevel(args.approval),
+                acceptance=args.acceptance,
             )
         )
         print(json.dumps({"ok": True, "mission": args.mission}))
+        return
+
+    if args.command == "dispatch-proof":
+        proof_id = CheckpointDispatcher(store).record_proof(
+            ImplementationProof(
+                mission_id=args.mission,
+                agent_id=args.agent,
+                execution_id=args.execution,
+                implementation_files=tuple(args.implementation_file),
+                api_endpoints=tuple(args.api_endpoint),
+                tests=json.loads(args.tests_json),
+                local_commit_sha=args.local_sha,
+                pushed_branch_sha=args.pushed_sha,
+                pr_number=args.pr_number,
+                pr_url=args.pr_url,
+                pr_head_sha=args.pr_head_sha,
+                next_slice=args.next_slice,
+            )
+        )
+        print(json.dumps({"ok": True, "proof_id": proof_id}))
+        return
+
+    if args.command == "dispatch-run":
+        decisions = CheckpointDispatcher(store).run(limit=args.limit)
+        print(
+            json.dumps(
+                {
+                    "processed": len(decisions),
+                    "decisions": [
+                        {
+                            "event_id": item.event_id,
+                            "checkpoint_id": item.checkpoint_id,
+                            "mission_id": item.mission_id,
+                            "classification": item.classification.value,
+                            "reasons": list(item.reasons),
+                            "successor_mission_id": item.successor_mission_id,
+                        }
+                        for item in decisions
+                    ],
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "dispatch-state":
+        print(json.dumps(CheckpointDispatcher(store).state(recent=args.recent), sort_keys=True))
+        return
+
+    if args.command == "dispatch-serve":
+        from .dispatch_api import DispatchAPI
+
+        server = DispatchAPI(CheckpointDispatcher(store)).server(args.host, args.port)
+        host, port = server.server_address[:2]
+        print(json.dumps({"ok": True, "listening": f"http://{host}:{port}"}), flush=True)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.server_close()
         return
 
     leases = LeaseManager(store)
