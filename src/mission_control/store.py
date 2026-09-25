@@ -127,6 +127,57 @@ class MissionStore:
                 CREATE INDEX IF NOT EXISTS idx_agent_launch_events_created
                     ON agent_launch_events(created_at DESC);
 
+                CREATE TABLE IF NOT EXISTS agent_events (
+                    event_id TEXT PRIMARY KEY,
+                    execution_id TEXT NOT NULL,
+                    mission_id TEXT NOT NULL,
+                    agent_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    reason TEXT,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_agent_events_execution
+                    ON agent_events(execution_id, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS agent_ratings (
+                    execution_id TEXT PRIMARY KEY,
+                    agent_id TEXT NOT NULL,
+                    mission_id TEXT NOT NULL,
+                    avi REAL NOT NULL,
+                    band TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    provisional INTEGER NOT NULL,
+                    complexity_class TEXT NOT NULL,
+                    dimensions_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS agent_work_metrics (
+                    execution_id TEXT PRIMARY KEY,
+                    agent_id TEXT NOT NULL,
+                    mission_id TEXT NOT NULL,
+                    produced_points REAL NOT NULL DEFAULT 0,
+                    pushed_points REAL NOT NULL DEFAULT 0,
+                    verified_points REAL NOT NULL DEFAULT 0,
+                    rework_points REAL NOT NULL DEFAULT 0,
+                    unpushed_commits INTEGER NOT NULL DEFAULT 0,
+                    unpushed_files INTEGER NOT NULL DEFAULT 0,
+                    stop_count INTEGER NOT NULL DEFAULT 0,
+                    unexpected_stop_count INTEGER NOT NULL DEFAULT 0,
+                    restart_count INTEGER NOT NULL DEFAULT 0,
+                    stalled_minutes REAL NOT NULL DEFAULT 0,
+                    blocked_minutes REAL NOT NULL DEFAULT 0,
+                    active_minutes REAL NOT NULL DEFAULT 0,
+                    current_goalpost TEXT,
+                    next_goalpost TEXT,
+                    mission_completion_pct REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
@@ -512,6 +563,271 @@ class MissionStore:
                     LIMIT ?
                     """,
                     (safe_limit,),
+                )
+            )
+
+    def record_agent_event(self, payload: dict[str, object]) -> None:
+        created_at = str(payload.get("created_at") or _iso_now())
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO agent_events (
+                    event_id, execution_id, mission_id, agent_id, provider,
+                    event_type, state, reason, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(payload["event_id"]),
+                    str(payload["execution_id"]),
+                    str(payload["mission_id"]),
+                    str(payload["agent_id"]),
+                    str(payload["provider"]),
+                    str(payload["event_type"]),
+                    str(payload["state"]),
+                    None if payload.get("reason") is None else str(payload["reason"]),
+                    json.dumps(payload, sort_keys=True),
+                    created_at,
+                ),
+            )
+
+    def list_agent_events(self, *, limit: int = 100) -> list[sqlite3.Row]:
+        safe_limit = min(500, max(1, int(limit)))
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    """
+                    SELECT * FROM agent_events
+                    ORDER BY created_at DESC, event_id DESC
+                    LIMIT ?
+                    """,
+                    (safe_limit,),
+                )
+            )
+
+    def list_active_agents(self) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    """
+                    WITH latest AS (
+                        SELECT execution_id, MAX(created_at) AS created_at
+                        FROM agent_events GROUP BY execution_id
+                    )
+                    SELECT e.*
+                    FROM agent_events e
+                    JOIN latest l
+                      ON l.execution_id=e.execution_id AND l.created_at=e.created_at
+                    WHERE e.state IN ('STARTING','RUNNING','WORKING')
+                    ORDER BY e.created_at DESC
+                    """
+                )
+            )
+
+    def upsert_agent_rating(self, payload: dict[str, object]) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO agent_ratings (
+                    execution_id, agent_id, mission_id, avi, band, confidence,
+                    provisional, complexity_class, dimensions_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(execution_id) DO UPDATE SET
+                    agent_id=excluded.agent_id,
+                    mission_id=excluded.mission_id,
+                    avi=excluded.avi,
+                    band=excluded.band,
+                    confidence=excluded.confidence,
+                    provisional=excluded.provisional,
+                    complexity_class=excluded.complexity_class,
+                    dimensions_json=excluded.dimensions_json,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    str(payload["execution_id"]),
+                    str(payload["agent_id"]),
+                    str(payload["mission_id"]),
+                    float(payload["avi"]),
+                    str(payload["band"]),
+                    float(payload["confidence"]),
+                    int(bool(payload["provisional"])),
+                    str(payload["complexity_class"]),
+                    json.dumps(payload["dimensions"], sort_keys=True),
+                    _iso_now(),
+                ),
+            )
+
+    def list_agent_ratings(self, *, limit: int = 100) -> list[sqlite3.Row]:
+        safe_limit = min(500, max(1, int(limit)))
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM agent_ratings ORDER BY updated_at DESC LIMIT ?",
+                    (safe_limit,),
+                )
+            )
+
+    def upsert_agent_work_metrics(self, payload: dict[str, object]) -> None:
+        fields = {
+            "produced_points": float(payload.get("produced_points", 0)),
+            "pushed_points": float(payload.get("pushed_points", 0)),
+            "verified_points": float(payload.get("verified_points", 0)),
+            "rework_points": float(payload.get("rework_points", 0)),
+            "unpushed_commits": int(payload.get("unpushed_commits", 0)),
+            "unpushed_files": int(payload.get("unpushed_files", 0)),
+            "stop_count": int(payload.get("stop_count", 0)),
+            "unexpected_stop_count": int(payload.get("unexpected_stop_count", 0)),
+            "restart_count": int(payload.get("restart_count", 0)),
+            "stalled_minutes": float(payload.get("stalled_minutes", 0)),
+            "blocked_minutes": float(payload.get("blocked_minutes", 0)),
+            "active_minutes": float(payload.get("active_minutes", 0)),
+            "current_goalpost": payload.get("current_goalpost"),
+            "next_goalpost": payload.get("next_goalpost"),
+            "mission_completion_pct": float(payload.get("mission_completion_pct", 0)),
+        }
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO agent_work_metrics (
+                    execution_id, agent_id, mission_id, produced_points,
+                    pushed_points, verified_points, rework_points,
+                    unpushed_commits, unpushed_files, stop_count,
+                    unexpected_stop_count, restart_count, stalled_minutes,
+                    blocked_minutes, active_minutes, current_goalpost,
+                    next_goalpost, mission_completion_pct, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(execution_id) DO UPDATE SET
+                    agent_id=excluded.agent_id,
+                    mission_id=excluded.mission_id,
+                    produced_points=excluded.produced_points,
+                    pushed_points=excluded.pushed_points,
+                    verified_points=excluded.verified_points,
+                    rework_points=excluded.rework_points,
+                    unpushed_commits=excluded.unpushed_commits,
+                    unpushed_files=excluded.unpushed_files,
+                    stop_count=excluded.stop_count,
+                    unexpected_stop_count=excluded.unexpected_stop_count,
+                    restart_count=excluded.restart_count,
+                    stalled_minutes=excluded.stalled_minutes,
+                    blocked_minutes=excluded.blocked_minutes,
+                    active_minutes=excluded.active_minutes,
+                    current_goalpost=excluded.current_goalpost,
+                    next_goalpost=excluded.next_goalpost,
+                    mission_completion_pct=excluded.mission_completion_pct,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    str(payload["execution_id"]),
+                    str(payload["agent_id"]),
+                    str(payload["mission_id"]),
+                    fields["produced_points"],
+                    fields["pushed_points"],
+                    fields["verified_points"],
+                    fields["rework_points"],
+                    fields["unpushed_commits"],
+                    fields["unpushed_files"],
+                    fields["stop_count"],
+                    fields["unexpected_stop_count"],
+                    fields["restart_count"],
+                    fields["stalled_minutes"],
+                    fields["blocked_minutes"],
+                    fields["active_minutes"],
+                    fields["current_goalpost"],
+                    fields["next_goalpost"],
+                    fields["mission_completion_pct"],
+                    _iso_now(),
+                ),
+            )
+
+    def list_agent_work_metrics(self, *, limit: int = 100) -> list[sqlite3.Row]:
+        safe_limit = min(500, max(1, int(limit)))
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM agent_work_metrics ORDER BY updated_at DESC LIMIT ?",
+                    (safe_limit,),
+                )
+            )
+
+    def agent_metrics_summary(self) -> dict[str, int]:
+        with self.connection() as conn:
+            active = conn.execute(
+                """
+                WITH latest AS (
+                    SELECT execution_id, MAX(created_at) AS created_at
+                    FROM agent_events GROUP BY execution_id
+                )
+                SELECT COUNT(*)
+                FROM agent_events e JOIN latest l
+                  ON l.execution_id=e.execution_id AND l.created_at=e.created_at
+                WHERE e.state IN ('STARTING','RUNNING','WORKING')
+                """
+            ).fetchone()[0]
+            launches = conn.execute(
+                "SELECT COUNT(*) FROM agent_events WHERE event_type='AGENT_LAUNCHED'"
+            ).fetchone()[0]
+            stops = conn.execute(
+                "SELECT COUNT(*) FROM agent_events WHERE event_type='AGENT_STOPPED'"
+            ).fetchone()[0]
+            failures = conn.execute(
+                """
+                SELECT COUNT(*) FROM agent_events
+                WHERE state IN ('FAILED','LOST')
+                """
+            ).fetchone()[0]
+        return {
+            "active_agents": int(active),
+            "launches_total": int(launches),
+            "stops_total": int(stops),
+            "failures_total": int(failures),
+        }
+
+    def get_agent_launch(self, execution_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM agent_launch_events
+                WHERE execution_id=?
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (execution_id,),
+            ).fetchone()
+
+    def execution_events(self, execution_id: str) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    """
+                    SELECT * FROM agent_events
+                    WHERE execution_id=?
+                    ORDER BY created_at, event_id
+                    """,
+                    (execution_id,),
+                )
+            )
+
+    def get_agent_rating(self, execution_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM agent_ratings WHERE execution_id=?",
+                (execution_id,),
+            ).fetchone()
+
+    def get_agent_work_metrics(self, execution_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM agent_work_metrics WHERE execution_id=?",
+                (execution_id,),
+            ).fetchone()
+
+    def mission_agent_executions(self, mission_id: str) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    """
+                    SELECT * FROM agent_executions
+                    WHERE mission_id=? ORDER BY started_at DESC
+                    """,
+                    (mission_id,),
                 )
             )
 
