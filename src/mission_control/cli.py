@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 from .controller import MissionController
 from .lease import LeaseManager
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
 from .policy import ApprovalPolicy
+from .repo_sync import SELF_HOSTED_REMOTE, Readiness, RepoSyncError, RepoSyncInspector
+from .repo_sync_api import RepoSyncAPI
 from .store import MissionStore
 
 
@@ -78,6 +81,21 @@ def main() -> None:
 
     sub.add_parser("expired")
     sub.add_parser("repositories")
+
+    sync_status = sub.add_parser("repo-sync-status")
+    sync_status.add_argument("--repo", required=True)
+    sync_status.add_argument("--live", action="store_true")
+
+    sub.add_parser("auth-readiness")
+
+    publish = sub.add_parser("publish-readiness")
+    publish.add_argument("--repo", required=True)
+    publish.add_argument("--remote", default=SELF_HOSTED_REMOTE)
+    publish.add_argument("--live", action="store_true")
+
+    sync_api = sub.add_parser("serve-repo-sync-api")
+    sync_api.add_argument("--host", default="127.0.0.1")
+    sync_api.add_argument("--port", type=int, default=8791)
 
     args = parser.parse_args()
     store = _store(args.db)
@@ -198,6 +216,60 @@ def main() -> None:
                 sort_keys=True,
             )
         )
+        return
+
+    if args.command in {"repo-sync-status", "publish-readiness", "auth-readiness"}:
+        inspector = RepoSyncInspector()
+        if args.command == "auth-readiness":
+            auth = inspector.github_auth()
+            print(
+                json.dumps(
+                    {
+                        "github": {
+                            "state": auth.state.value,
+                            "detail": auth.detail,
+                            "account": auth.account,
+                        },
+                        "self_hosted_remote": SELF_HOSTED_REMOTE,
+                        "self_hosted_requires_github_auth": False,
+                    },
+                    sort_keys=True,
+                )
+            )
+            return
+        try:
+            if args.command == "repo-sync-status":
+                report = inspector.report(args.repo, live=args.live)
+                print(json.dumps(report.to_dict(), sort_keys=True))
+                return
+            status = inspector.status(args.repo, live=args.live)
+        except RepoSyncError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
+            raise SystemExit(3) from exc
+        sync = status.remote(args.remote)
+        auth = inspector.github_auth() if sync and sync.kind == "GITHUB" else None
+        decision = inspector.publish_decision(status, args.remote, auth)
+        print(json.dumps(asdict(decision), sort_keys=True))
+        if decision.readiness == Readiness.BLOCKED:
+            raise SystemExit(2)
+        return
+
+    if args.command == "serve-repo-sync-api":
+        server = RepoSyncAPI(store, RepoSyncInspector()).server(args.host, args.port)
+        host, port = server.server_address
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "service": "mission-control-repo-sync-api",
+                    "host": host,
+                    "port": port,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        server.serve_forever()
         return
 
 

@@ -38,3 +38,27 @@ live SMS/email and destructive Git operations require explicit policy approval.
     python -m mission_control.cli --db .runtime/mission-control.db create-mission --mission PAS-29 --repository Codestra-Mission-Control --goal "Build event-driven IDE agent dispatcher"
     python -m mission_control.cli --db .runtime/mission-control.db claim --mission PAS-29 --agent codex-01 --ttl 600
     python -m mission_control.cli --db .runtime/mission-control.db heartbeat --mission PAS-29 --agent codex-01 --ttl 600
+
+## Repo sync and publication-auth readiness
+
+Read-only; never fetches, pushes, resets or edits the worktree. GitHub auth
+(`gh auth status`) is evaluated separately from self-hosted `codestra-local`
+publication, so a logged-out or missing `gh` blocks only GitHub publication.
+
+    python -m mission_control.cli repo-sync-status --repo <path> [--live]
+    python -m mission_control.cli publish-readiness --repo <path> --remote codestra-local [--live]
+    python -m mission_control.cli auth-readiness
+    python -m mission_control.cli --db <db> serve-repo-sync-api --port 8791
+
+`publish-readiness` exits 0 for READY/UP_TO_DATE, 2 for BLOCKED (dirty,
+protected branch, detached HEAD, remote newer/diverged, unreachable remote,
+GitHub auth unavailable/CLI missing) and 3 when the path is not a checkout.
+`--live` compares against `git ls-remote` instead of cached tracking refs.
+
+HTTP API (GET only, repositories addressed by registry name):
+
+- `GET /health`
+- `GET /platform/v1/repo-sync/auth`
+- `GET /platform/v1/repo-sync/repositories`
+- `GET /platform/v1/repo-sync/repositories/{name}[?live=1]`
+- `GET /platform/v1/repo-sync/repositories/{name}/readiness?remote=<remote>[&live=1]`
