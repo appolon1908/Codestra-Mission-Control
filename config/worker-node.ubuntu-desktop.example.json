@@ -1,0 +1,25 @@
+{
+  "node_id": "core-node-02",
+  "hostname": "codestra-OptiPlex-3050",
+  "os": "linux",
+  "lanes": ["builder", "reviewer", "verifier"],
+  "providers": ["claude", "codex"],
+  "worktree_root": "/home/codestra/Worktrees",
+  "max_parallel_writers": 3,
+  "tailnet_dns": null,
+  "production_effects_enabled": false,
+  "readiness": {
+    "heartbeat_stale_seconds": 300,
+    "auth_stale_seconds": 3600,
+    "requires": [
+      "builder lane",
+      "git available",
+      "writable worktree root",
+      "fresh heartbeat",
+      "at least one authenticated provider",
+      "production effects disabled"
+    ]
+  },
+  "probe_command": "python -m mission_control.cli --db .runtime/mission-control.db node-probe --node core-node-02 --lane builder --lane reviewer --lane verifier --provider claude --provider codex --worktree-root /home/codestra/Worktrees",
+  "api": "python -m mission_control.cli --db .runtime/mission-control.db serve-worker-node-api --host 127.0.0.1 --port 8791"
+}

@@ -91,6 +91,35 @@ class MissionStore:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS implementation_executions (
+                    execution_id TEXT PRIMARY KEY,
+                    agent_number INTEGER NOT NULL UNIQUE,
+                    mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+                    agent_id TEXT NOT NULL,
+                    workstation TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    branch TEXT NOT NULL,
+                    worktree TEXT NOT NULL,
+                    api_required INTEGER NOT NULL DEFAULT 0,
+                    state TEXT NOT NULL,
+                    implementation_files_json TEXT NOT NULL,
+                    api_endpoints_json TEXT NOT NULL,
+                    tests_json TEXT NOT NULL,
+                    local_commit_sha TEXT,
+                    pushed_branch_sha TEXT,
+                    pr_number INTEGER,
+                    pr_url TEXT,
+                    pr_head_sha TEXT,
+                    proof_matched INTEGER NOT NULL DEFAULT 0,
+                    started_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_implementation_mission
+                    ON implementation_executions(mission_id, agent_number);
+                CREATE INDEX IF NOT EXISTS idx_implementation_state
+                    ON implementation_executions(state, agent_number);
+
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
@@ -151,6 +180,29 @@ class MissionStore:
                     checkpoint_head TEXT,
                     reason TEXT,
                     created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS worker_nodes (
+                    node_id TEXT PRIMARY KEY,
+                    hostname TEXT NOT NULL,
+                    os TEXT NOT NULL,
+                    lanes_json TEXT NOT NULL,
+                    capabilities_json TEXT NOT NULL,
+                    production_effects_enabled INTEGER NOT NULL DEFAULT 0,
+                    last_heartbeat_at TEXT,
+                    registered_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS worker_provider_auth (
+                    node_id TEXT NOT NULL REFERENCES worker_nodes(node_id) ON DELETE CASCADE,
+                    provider TEXT NOT NULL,
+                    authenticated INTEGER NOT NULL,
+                    auth_method TEXT,
+                    exit_code INTEGER,
+                    detail TEXT,
+                    checked_at TEXT NOT NULL,
+                    PRIMARY KEY (node_id, provider)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_events_mission
@@ -465,6 +517,204 @@ class MissionStore:
                 "SELECT * FROM agent_executions WHERE execution_id=?",
                 (execution_id,),
             ).fetchone()
+
+    def start_implementation_execution(
+        self,
+        *,
+        execution_id: str,
+        mission_id: str,
+        agent_id: str,
+        workstation: str,
+        provider: str,
+        branch: str,
+        worktree: str,
+        api_required: bool = False,
+    ) -> int:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            mission = conn.execute(
+                "SELECT mission_id FROM missions WHERE mission_id=?",
+                (mission_id,),
+            ).fetchone()
+            if not mission:
+                conn.execute("ROLLBACK")
+                raise KeyError(mission_id)
+            number_row = conn.execute(
+                "SELECT COALESCE(MAX(agent_number), 0) + 1 AS next_number "
+                "FROM implementation_executions"
+            ).fetchone()
+            agent_number = int(number_row["next_number"])
+            conn.execute(
+                """
+                INSERT INTO implementation_executions (
+                    execution_id, agent_number, mission_id, agent_id,
+                    workstation, provider, branch, worktree, api_required,
+                    state, implementation_files_json, api_endpoints_json,
+                    tests_json, proof_matched, started_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', 0, ?, ?)
+                """,
+                (
+                    execution_id,
+                    agent_number,
+                    mission_id,
+                    agent_id,
+                    workstation,
+                    provider,
+                    branch,
+                    worktree,
+                    int(api_required),
+                    "STARTED",
+                    now,
+                    now,
+                ),
+            )
+            self._event(
+                conn,
+                mission_id,
+                "IMPLEMENTATION_EXECUTION_STARTED",
+                agent_id,
+                {
+                    "execution_id": execution_id,
+                    "agent_number": agent_number,
+                    "workstation": workstation,
+                    "provider": provider,
+                    "branch": branch,
+                    "worktree": worktree,
+                    "api_required": api_required,
+                },
+            )
+            conn.execute("COMMIT")
+            return agent_number
+
+    def record_implementation_proof(
+        self,
+        execution_id: str,
+        *,
+        implementation_files: list[str],
+        api_endpoints: list[str],
+        tests: dict,
+        local_commit_sha: str | None,
+        pushed_branch_sha: str | None,
+        pr_number: int | None,
+        pr_url: str | None,
+        pr_head_sha: str | None,
+    ):
+        from .implementation_contract import evaluate_implementation_proof
+
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM implementation_executions WHERE execution_id=?",
+                (execution_id,),
+            ).fetchone()
+            if not row:
+                conn.execute("ROLLBACK")
+                raise KeyError(execution_id)
+
+            decision = evaluate_implementation_proof(
+                local_commit_sha=local_commit_sha,
+                pushed_branch_sha=pushed_branch_sha,
+                pr_head_sha=pr_head_sha,
+                pr_url=pr_url,
+                tests=tests,
+                implementation_files=implementation_files,
+                api_required=bool(row["api_required"]),
+                api_endpoints=api_endpoints,
+            )
+            conn.execute(
+                """
+                UPDATE implementation_executions
+                SET state=?, implementation_files_json=?, api_endpoints_json=?,
+                    tests_json=?, local_commit_sha=?, pushed_branch_sha=?,
+                    pr_number=?, pr_url=?, pr_head_sha=?, proof_matched=?,
+                    updated_at=?
+                WHERE execution_id=?
+                """,
+                (
+                    decision.state.value,
+                    json.dumps(implementation_files, sort_keys=True),
+                    json.dumps(api_endpoints, sort_keys=True),
+                    json.dumps(tests, sort_keys=True),
+                    local_commit_sha,
+                    pushed_branch_sha,
+                    pr_number,
+                    pr_url,
+                    pr_head_sha,
+                    int(decision.push_proven),
+                    _iso_now(),
+                    execution_id,
+                ),
+            )
+            self._event(
+                conn,
+                row["mission_id"],
+                "IMPLEMENTATION_PROOF_RECORDED",
+                row["agent_id"],
+                {
+                    "execution_id": execution_id,
+                    "agent_number": row["agent_number"],
+                    "state": decision.state.value,
+                    "eligible_for_review": decision.eligible_for_review,
+                    "push_proven": decision.push_proven,
+                    "reasons": list(decision.reasons),
+                    "local_commit_sha": local_commit_sha,
+                    "pushed_branch_sha": pushed_branch_sha,
+                    "pr_head_sha": pr_head_sha,
+                    "pr_number": pr_number,
+                    "pr_url": pr_url,
+                },
+            )
+            conn.execute("COMMIT")
+            return decision
+
+    def get_implementation_execution(self, execution_id: str) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM implementation_executions WHERE execution_id=?",
+                (execution_id,),
+            ).fetchone()
+
+    def latest_implementation_execution(
+        self,
+        mission_id: str,
+    ) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM implementation_executions
+                WHERE mission_id=?
+                ORDER BY agent_number DESC
+                LIMIT 1
+                """,
+                (mission_id,),
+            ).fetchone()
+
+    def list_implementation_executions(
+        self,
+        *,
+        states: tuple[str, ...] | None = None,
+    ) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            if not states:
+                return list(
+                    conn.execute(
+                        "SELECT * FROM implementation_executions "
+                        "ORDER BY agent_number"
+                    )
+                )
+            placeholders = ",".join("?" for _ in states)
+            return list(
+                conn.execute(
+                    f"""
+                    SELECT * FROM implementation_executions
+                    WHERE state IN ({placeholders})
+                    ORDER BY agent_number
+                    """,
+                    states,
+                )
+            )
 
     def record_checkpoint(
         self,
@@ -845,6 +1095,134 @@ class MissionStore:
             ).fetchone()
             conn.execute("COMMIT")
             return updated
+
+    def upsert_worker_node(self, node_id: str, capabilities: dict) -> None:
+        now = _iso_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO worker_nodes (
+                    node_id, hostname, os, lanes_json, capabilities_json,
+                    production_effects_enabled, registered_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(node_id) DO UPDATE SET
+                    hostname=excluded.hostname,
+                    os=excluded.os,
+                    lanes_json=excluded.lanes_json,
+                    capabilities_json=excluded.capabilities_json,
+                    production_effects_enabled=excluded.production_effects_enabled,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    node_id,
+                    capabilities["hostname"],
+                    capabilities["os"],
+                    json.dumps(capabilities["lanes"]),
+                    json.dumps(capabilities, sort_keys=True),
+                    int(bool(capabilities.get("production_effects_enabled"))),
+                    now,
+                    now,
+                ),
+            )
+            self._event(
+                conn,
+                f"node:{node_id}",
+                "WORKER_NODE_REGISTERED",
+                None,
+                {
+                    "lanes": capabilities["lanes"],
+                    "providers": capabilities.get("providers", []),
+                },
+            )
+            conn.execute("COMMIT")
+
+    def record_worker_heartbeat(self, node_id: str, at: str) -> bool:
+        with self.connection() as conn:
+            changed = conn.execute(
+                "UPDATE worker_nodes SET last_heartbeat_at=? WHERE node_id=?",
+                (at, node_id),
+            ).rowcount
+            return bool(changed)
+
+    def record_provider_auth(self, node_id: str, status: dict) -> None:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO worker_provider_auth (
+                    node_id, provider, authenticated, auth_method, exit_code,
+                    detail, checked_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(node_id, provider) DO UPDATE SET
+                    authenticated=excluded.authenticated,
+                    auth_method=excluded.auth_method,
+                    exit_code=excluded.exit_code,
+                    detail=excluded.detail,
+                    checked_at=excluded.checked_at
+                """,
+                (
+                    node_id,
+                    status["provider"],
+                    int(bool(status["authenticated"])),
+                    status.get("auth_method"),
+                    status.get("exit_code"),
+                    status.get("detail"),
+                    status["checked_at"],
+                ),
+            )
+            self._event(
+                conn,
+                f"node:{node_id}",
+                "WORKER_PROVIDER_AUTH_RECORDED",
+                None,
+                {
+                    "provider": status["provider"],
+                    "authenticated": bool(status["authenticated"]),
+                },
+            )
+            conn.execute("COMMIT")
+
+    @staticmethod
+    def _worker_node_payload(row: sqlite3.Row) -> dict:
+        item = dict(row)
+        item["lanes"] = json.loads(item.pop("lanes_json"))
+        item["capabilities"] = json.loads(item.pop("capabilities_json"))
+        item["production_effects_enabled"] = bool(item["production_effects_enabled"])
+        return item
+
+    def get_worker_node(self, node_id: str) -> dict | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM worker_nodes WHERE node_id=?",
+                (node_id,),
+            ).fetchone()
+        return self._worker_node_payload(row) if row else None
+
+    def list_worker_nodes(self) -> list[dict]:
+        with self.connection() as conn:
+            rows = list(conn.execute("SELECT * FROM worker_nodes ORDER BY node_id"))
+        return [self._worker_node_payload(row) for row in rows]
+
+    def list_provider_auth(self, node_id: str) -> list[dict]:
+        with self.connection() as conn:
+            rows = list(
+                conn.execute(
+                    """
+                    SELECT provider, authenticated, auth_method, exit_code, detail, checked_at
+                    FROM worker_provider_auth
+                    WHERE node_id=?
+                    ORDER BY provider
+                    """,
+                    (node_id,),
+                )
+            )
+        items = [dict(row) for row in rows]
+        for item in items:
+            item["authenticated"] = bool(item["authenticated"])
+        return items
 
     def events(self, mission_id: str) -> list[sqlite3.Row]:
         with self.connection() as conn:
