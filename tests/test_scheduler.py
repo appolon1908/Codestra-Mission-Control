@@ -237,6 +237,9 @@ def test_daily_report_exposes_blocked_review_and_approval_required_work(tmp_path
     assert report["status_counts"]["BLOCKED"] == 1
     assert report["status_counts"]["IN_REVIEW"] == 1
     assert report["status_counts"]["MERGE_READY"] == 1
+    assert report["blocked"] == ["M-0"]
+    assert report["review"] == ["M-1"]
+    assert report["approval_required"] == ["M-2"]
     assert "M-0: BLOCKED" in report["reminders"]
     assert "M-1: IN_REVIEW" in report["reminders"]
     assert "M-2: MERGE_READY" in report["reminders"]
