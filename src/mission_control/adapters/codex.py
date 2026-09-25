@@ -5,6 +5,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from mission_control.redaction import redact_text
+
 from .base import AgentAssignment
 from .process import ProcessAgentAdapter
 
@@ -43,7 +45,7 @@ class CodexAdapter(ProcessAgentAdapter):
         return {
             "authenticated": proc.returncode == 0 and "logged in" in combined.lower(),
             "exit_code": proc.returncode,
-            "summary": combined[:1000],
+            "summary": redact_text(combined, limit=1000),
         }
 
     def build_command(
