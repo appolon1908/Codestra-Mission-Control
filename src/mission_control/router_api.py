@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hmac
 import json
+import os
+import ipaddress
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
@@ -13,6 +16,32 @@ from .mission_router import (
 )
 
 MAX_BODY = 1024 * 1024
+TOKEN_ENV = "MISSION_CONTROL_API_TOKEN"
+MIN_TOKEN_LENGTH = 32
+
+
+def _is_loopback_host(host: str) -> bool:
+    normalized = host.strip().lower()
+    if normalized == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _api_token(host: str) -> str | None:
+    token = os.environ.get(TOKEN_ENV)
+    if token is not None and len(token) < MIN_TOKEN_LENGTH:
+        raise ValueError(f"{TOKEN_ENV} must be at least {MIN_TOKEN_LENGTH} characters")
+    if not _is_loopback_host(host) and not token:
+        raise ValueError(
+            f"non-loopback router bind requires {TOKEN_ENV} with at least "
+            f"{MIN_TOKEN_LENGTH} characters"
+        )
+    return token
+
+
 
 
 class MissionRouterAPI:
@@ -23,6 +52,7 @@ class MissionRouterAPI:
 
     def server(self, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
         router = self.router
+        api_token = _api_token(host)
 
         class Handler(BaseHTTPRequestHandler):
             server_version = "CodestraMissionControl/router-v1"
@@ -53,6 +83,20 @@ class MissionRouterAPI:
                     return None
                 return payload if isinstance(payload, dict) else None
 
+            def _authorized(self, path: str) -> bool:
+                if path == "/health" or not api_token:
+                    return True
+                header = self.headers.get("Authorization", "")
+                prefix = "Bearer "
+                if not header.startswith(prefix):
+                    self._json(401, {"error": "unauthorized"})
+                    return False
+                candidate = header[len(prefix) :]
+                if not hmac.compare_digest(candidate, api_token):
+                    self._json(401, {"error": "unauthorized"})
+                    return False
+                return True
+
             def _handle_error(self, exc: Exception) -> None:
                 if isinstance(exc, KeyError):
                     self._json(404, {"error": "not_found", "detail": str(exc)})
@@ -71,6 +115,8 @@ class MissionRouterAPI:
 
             def do_GET(self) -> None:
                 parsed = urlparse(self.path)
+                if not self._authorized(parsed.path):
+                    return
                 query = parse_qs(parsed.query)
                 if parsed.path == "/health":
                     self._json(
@@ -121,6 +167,8 @@ class MissionRouterAPI:
 
             def do_POST(self) -> None:
                 parsed = urlparse(self.path)
+                if not self._authorized(parsed.path):
+                    return
                 body = self._body()
                 if body is None:
                     self._json(400, {"error": "invalid_json_or_body_size"})
