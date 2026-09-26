@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -248,4 +249,44 @@ def test_router_api_reads_then_claim_move_and_reconcile(tmp_path):
     assert status == 200
     assert moved["assigned_count"] == 1
     assert moved["assigned"][0]["task_id"] == "MW-CMD-001"
+    server.shutdown()
+
+
+def test_router_api_non_loopback_bind_requires_strong_token(tmp_path, monkeypatch):
+    router = make_router(tmp_path)
+    monkeypatch.delenv("MISSION_CONTROL_API_TOKEN", raising=False)
+    with pytest.raises(ValueError, match="non-loopback router bind requires"):
+        MissionRouterAPI(router).server("0.0.0.0", 0)
+
+    monkeypatch.setenv("MISSION_CONTROL_API_TOKEN", "short")
+    with pytest.raises(ValueError, match="at least 32"):
+        MissionRouterAPI(router).server("127.0.0.1", 0)
+
+
+def test_router_api_token_protects_control_routes_but_not_health(tmp_path, monkeypatch):
+    router = make_router(tmp_path)
+    token = "router-test-token-0123456789abcdef"
+    monkeypatch.setenv("MISSION_CONTROL_API_TOKEN", token)
+    server = MissionRouterAPI(router).server()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    base = f"http://{host}:{port}"
+
+    with urllib.request.urlopen(base + "/health", timeout=3) as response:
+        assert response.status == 200
+
+    try:
+        urllib.request.urlopen(base + "/platform/v1/router/dashboard", timeout=3)
+        raise AssertionError("dashboard unexpectedly allowed without token")
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 401
+
+    req = urllib.request.Request(
+        base + "/platform/v1/router/dashboard",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(req, timeout=3) as response:
+        payload = json.load(response)
+    assert payload["totals"]["atomic_tasks"] == 2
     server.shutdown()
