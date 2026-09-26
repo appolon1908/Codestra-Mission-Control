@@ -1,11 +1,15 @@
 from mission_control.store import MissionStore
 from mission_control.mission_graph import MissionGraphStore
 from mission_control.router_store import RouterStore
+from mission_control.mission_router import AtomicTask
 
 DB="/home/codestra/Worktrees/Runtime-Agent-Brain/agent-brain.db"
 s=MissionStore(DB);s.initialize()
 g=MissionGraphStore(s);g.initialize()
 r=RouterStore(s);r.initialize()
+r.upsert_area("WhatsApp","API","API",1)
+r.upsert_subarea("WhatsApp","API","AI-Drafts","AI Drafts",1)
+r.upsert_task(AtomicTask("WA-AI-DRAFTS-COMPLETE","WhatsApp","API","AI-Drafts","WHATSAPP-AI-DRAFTS-COMPLETE",priority=10,required_skills=frozenset({"review","api","testing"}),collision_keys=frozenset({"whatsapp-ai-drafts","pr-12"})))
 
 g.add_node("wa-area-api","WhatsApp","AREA","API",sequence=1)
 g.add_node("wa-sub-ai-drafts","WhatsApp","SUBAREA","AI Drafts","wa-area-api",sequence=1)
