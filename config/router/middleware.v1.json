@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "repository": "Middleware-",
+  "hierarchy": [
+    {
+      "area_id": "middleware.api-surface",
+      "name": "API Surface",
+      "contract": {
+        "owns": ["public API contracts", "route registration", "request/response schemas", "versioning"],
+        "must_not_own": ["provider execution", "database credentials", "edge TLS"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.api.routes", "name": "Routes & Versioning", "contract": {"outputs": ["route registry", "version policy"]}},
+        {"subarea_id": "middleware.api.schemas", "name": "Schemas & Errors", "contract": {"outputs": ["request schemas", "response schemas", "error model"]}},
+        {"subarea_id": "middleware.api.idempotency", "name": "Idempotency & Correlation", "contract": {"outputs": ["idempotency contract", "correlation headers"]}}
+      ]
+    },
+    {
+      "area_id": "middleware.identity-security",
+      "name": "Identity & Security",
+      "contract": {
+        "owns": ["JWT validation", "authorization", "tenant identity", "service identity", "fail-closed policy"],
+        "must_not_own": ["Keycloak administration UI", "edge routing"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.identity.jwt", "name": "JWT & Claims", "contract": {"outputs": ["issuer/audience validation", "claim contract"]}},
+        {"subarea_id": "middleware.identity.authz", "name": "Authorization", "contract": {"outputs": ["permission evaluation", "deny reasons"]}},
+        {"subarea_id": "middleware.identity.secrets", "name": "Secret References", "contract": {"outputs": ["OpenBao references", "no plaintext secret policy"]}}
+      ]
+    },
+    {
+      "area_id": "middleware.command-core",
+      "name": "Command Core",
+      "contract": {
+        "owns": ["command model", "state machine", "idempotency semantics", "effect policy", "durable command lifecycle"],
+        "must_not_own": ["provider-specific API details"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.command.model", "name": "Command Model", "contract": {"outputs": ["command envelope", "state transitions"]}},
+        {"subarea_id": "middleware.command.policy", "name": "Effect Policy", "contract": {"outputs": ["default-deny production effects", "approval boundaries"]}},
+        {"subarea_id": "middleware.command.replay", "name": "Replay & Recovery", "contract": {"outputs": ["replay rules", "dead-letter transitions"]}}
+      ]
+    },
+    {
+      "area_id": "middleware.workers-execution",
+      "name": "Workers & Execution",
+      "contract": {
+        "owns": ["outbox claim", "worker leases", "fencing", "retry execution", "scheduler"],
+        "must_not_own": ["API authorization decisions"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.workers.claims", "name": "Claims & Leases", "contract": {"outputs": ["SKIP LOCKED claim path", "lease/fencing contract"]}},
+        {"subarea_id": "middleware.workers.execution", "name": "Execution Loop", "contract": {"outputs": ["worker loop", "retry policy"]}},
+        {"subarea_id": "middleware.workers.scheduler", "name": "Scheduler", "contract": {"outputs": ["scheduled commands", "bounded concurrency"]}}
+      ]
+    },
+    {
+      "area_id": "middleware.adapters",
+      "name": "Adapters",
+      "contract": {
+        "owns": ["provider boundary", "capability mapping", "provider readback", "sandbox/live separation"],
+        "must_not_own": ["canonical command state"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.adapters.business", "name": "Business System Adapters", "contract": {"providers": ["odoo-19", "n8n-automation", "provisioning-service"]}},
+        {"subarea_id": "middleware.adapters.communications", "name": "Communication Adapters", "contract": {"providers": ["klyrow-email", "telnexa-sms", "vicidial-restricted", "whatsapp-transport"]}},
+        {"subarea_id": "middleware.adapters.synthetic", "name": "Synthetic & Test Adapters", "contract": {"providers": ["test-syn"]}}
+      ]
+    },
+    {
+      "area_id": "middleware.persistence",
+      "name": "Persistence",
+      "contract": {
+        "owns": ["PostgreSQL schema", "migrations", "transactions", "retention", "RLS", "durable ledger/outbox"],
+        "must_not_own": ["dashboard presentation"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.persistence.schema", "name": "Schema & Ownership", "contract": {"outputs": ["tables", "service ownership", "constraints"]}},
+        {"subarea_id": "middleware.persistence.transactions", "name": "Atomicity & Concurrency", "contract": {"outputs": ["transaction boundaries", "uniqueness", "locking"]}},
+        {"subarea_id": "middleware.persistence.lifecycle", "name": "Migrations & Retention", "contract": {"outputs": ["migration chain", "retention policy", "backup compatibility"]}}
+      ]
+    },
+    {
+      "area_id": "middleware.observability",
+      "name": "Observability",
+      "contract": {
+        "owns": ["metrics", "traces", "logs", "service health", "SLO signals"],
+        "must_not_own": ["business command authorization"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.observability.metrics", "name": "Metrics & Health", "contract": {"outputs": ["Prometheus metrics", "health/readiness"]}},
+        {"subarea_id": "middleware.observability.traces", "name": "Tracing", "contract": {"outputs": ["OTel spans", "correlation propagation"]}},
+        {"subarea_id": "middleware.observability.logs", "name": "Structured Logs", "contract": {"outputs": ["Loki-ready logs", "redaction"]}}
+      ]
+    },
+    {
+      "area_id": "middleware.audit",
+      "name": "Audit",
+      "contract": {
+        "owns": ["immutable audit events", "effect evidence", "actor/head correlation", "reconciliation evidence"],
+        "must_not_own": ["mutable execution state as source of truth"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.audit.ledger", "name": "Audit Ledger", "contract": {"outputs": ["append-only events", "sequence integrity"]}},
+        {"subarea_id": "middleware.audit.evidence", "name": "Evidence & Readback", "contract": {"outputs": ["provider readback", "exact-head evidence"]}},
+        {"subarea_id": "middleware.audit.reconciliation", "name": "Reconciliation", "contract": {"outputs": ["drift detection", "repair queue"]}}
+      ]
+    },
+    {
+      "area_id": "middleware.testing-quality",
+      "name": "Testing & Quality",
+      "contract": {
+        "owns": ["unit tests", "integration tests", "security tests", "contract tests", "CI acceptance"],
+        "must_not_own": ["self-certification"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.quality.unit", "name": "Unit & Contract Tests", "contract": {"outputs": ["fast deterministic suite", "API contract coverage"]}},
+        {"subarea_id": "middleware.quality.integration", "name": "Integration & Database Tests", "contract": {"outputs": ["PostgreSQL evidence", "adapter sandbox tests"]}},
+        {"subarea_id": "middleware.quality.security", "name": "Security & Policy Tests", "contract": {"outputs": ["deny-path tests", "secret scans", "auth tests"]}},
+        {"subarea_id": "middleware.quality.ci", "name": "CI Acceptance", "contract": {"outputs": ["required checks", "exact-head status"]}}
+      ]
+    },
+    {
+      "area_id": "middleware.delivery",
+      "name": "Delivery",
+      "contract": {
+        "owns": ["build", "images", "signing", "staging promotion", "rollback", "post-merge verification"],
+        "must_not_own": ["production approval decision"]
+      },
+      "subareas": [
+        {"subarea_id": "middleware.delivery.build", "name": "Build & Artifact", "contract": {"outputs": ["immutable image", "SBOM", "signature"]}},
+        {"subarea_id": "middleware.delivery.staging", "name": "Staging & Certification", "contract": {"outputs": ["staging deploy evidence", "post-deploy tests"]}},
+        {"subarea_id": "middleware.delivery.release", "name": "Promotion & Rollback", "contract": {"outputs": ["promotion manifest", "rollback evidence", "post-merge checks"]}}
+      ]
+    }
+  ]
+}
