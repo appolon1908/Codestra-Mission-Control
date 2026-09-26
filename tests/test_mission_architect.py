@@ -1,25 +1,22 @@
 import pytest
-from mission_control.mission_architect import MissionArchitect, MissionCharter
-from mission_control.store import MissionStore
+from mission_control.mission_architect import MissionArchitect,MissionBrief
 
-def setup(tmp_path):
-    store=MissionStore(tmp_path/"mc.db"); store.initialize()
-    arch=MissionArchitect(store); arch.initialize(); return arch
+def brief():
+ return MissionBrief("M1","Middleware-","API","Commands","Implement command API",
+  "Caddy -> Kong -> Middleware :8095",("no production effects",),("green tests",),("implement POST command",),("unit + Postman",),
+  ("/platform/v1/commands",),("identity",))
 
-def charter(version=1,goal="Build router"):
-    return MissionCharter("M-1","Middleware-","Mission Router",goal,("green CI","post-merge evidence"),
-        architecture=("Caddy -> Kong -> Middleware",),constraints=("production effects off",),
-        required_evidence=("tests","PR","CI"),areas=("API","Workers"),version=version)
+def test_agent_receives_frozen_goal_architecture_and_atomic_implementation_task():
+ b=brief(); c=MissionArchitect().agent_contract(b,"implement POST command")
+ assert c["goal"]==b.goal and c["architecture"]==b.architecture
+ assert c["mission_digest"]==b.digest
+ assert c["instruction"].startswith("IMPLEMENT")
 
-def test_agent_must_ack_exact_active_mission_digest(tmp_path):
-    arch=setup(tmp_path); c=charter(); digest=arch.publish(c)
-    assert arch.agent_context("M-1","codex-1")["acknowledged"] is False
-    arch.acknowledge("M-1",1,"codex-1",digest)
-    assert arch.agent_context("M-1","codex-1")["acknowledged"] is True
+def test_agent_cannot_use_stale_mission_memory():
+ b=brief(); c=MissionArchitect().agent_contract(b,"implement POST command")
+ with pytest.raises(ValueError,match="stale mission"):
+  MissionArchitect.verify_agent_digest(c,"different")
 
-def test_new_mission_version_invalidates_old_agent_memory(tmp_path):
-    arch=setup(tmp_path); old=charter(); old_digest=arch.publish(old); arch.acknowledge("M-1",1,"claude-1",old_digest)
-    new=charter(version=2,goal="Build router and live handoff"); arch.publish(new)
-    assert arch.agent_context("M-1","claude-1")["acknowledged"] is False
-    with pytest.raises(ValueError):
-        arch.acknowledge("M-1",2,"claude-1",old_digest)
+def test_vague_or_incomplete_mission_fails_before_assignment():
+ with pytest.raises(ValueError):
+  MissionArchitect().validate(MissionBrief("M","","","","","","","","",""))
