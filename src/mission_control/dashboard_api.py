@@ -5,13 +5,15 @@ from urllib.parse import parse_qs,urlparse
 from .dashboard_read_model import DashboardReadModel
 from .agent_registry import AgentRegistry
 from .oversight import OversightStore
+from .assignments import AssignmentStore
+from .realtime_events import RealtimeEvent, RealtimePublisher
 
 PREFIX="/platform/v1/dashboard"
 
 class DashboardAPI:
     def __init__(self,store): self.store=store
     def server(self,host="127.0.0.1",port=0):
-        model=DashboardReadModel(self.store); agents=AgentRegistry(self.store); oversight=OversightStore(self.store)
+        model=DashboardReadModel(self.store); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); publisher=RealtimePublisher("http://127.0.0.1:8791/events")
         class Handler(BaseHTTPRequestHandler):
             def send_json(self,status,payload):
                 body=json.dumps(payload,default=str).encode()
@@ -34,6 +36,22 @@ class DashboardAPI:
                 self.send_header("Access-Control-Allow-Methods","GET, POST, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers","Content-Type, Authorization")
                 self.end_headers()
+            def do_POST(self):
+                p=urlparse(self.path)
+                if p.path=="/platform/v1/assignments":
+                    length=int(self.headers.get("Content-Length","0"))
+                    try:
+                        body=json.loads(self.rfile.read(length) or b"{}")
+                        required=("task_id","agent_id","repository","area","subarea")
+                        if any(not body.get(k) for k in required):
+                            return self.send_json(400,{"error":"assignment_fields_required"})
+                        claim=assignments.claim(**{k:body[k] for k in required})
+                        agents.heartbeat(body["agent_id"],state="CLAIMED",repository=body["repository"],area_id=body["area"],subarea_id=body["subarea"],task_id=body["task_id"],mission_id=body.get("mission_id"),workstation="UBUNTU_DESKTOP")
+                        publisher.publish_http(RealtimeEvent.create("mission.task.claimed",{"task_id":body["task_id"],"agent_id":body["agent_id"],"repository":body["repository"]}))
+                        return self.send_json(201,claim.__dict__)
+                    except ValueError as exc:
+                        return self.send_json(409,{"error":str(exc)})
+                return self.send_json(404,{"error":"not_found"})
             def do_GET(self):
                 p=urlparse(self.path);q=parse_qs(p.query)
                 if p.path==PREFIX+"/repository":
