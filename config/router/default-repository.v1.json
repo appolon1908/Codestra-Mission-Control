@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "repository": "*",
+  "hierarchy": [
+    {
+      "area_id": "default.authority-architecture",
+      "name": "Authority & Architecture",
+      "contract": {"owns": ["source truth", "architecture boundaries", "contracts", "dependencies"]},
+      "subareas": [
+        {"subarea_id": "default.authority.source", "name": "Source & Ownership", "contract": {"outputs": ["repository authority", "ownership map"]}},
+        {"subarea_id": "default.authority.contracts", "name": "Architecture & Contracts", "contract": {"outputs": ["boundary contracts", "dependency map"]}}
+      ]
+    },
+    {
+      "area_id": "default.surface",
+      "name": "Product / API Surface",
+      "contract": {"owns": ["user-facing/API surface", "request/response or UI contracts", "versioning"]},
+      "subareas": [
+        {"subarea_id": "default.surface.entrypoints", "name": "Entrypoints & Routes", "contract": {"outputs": ["route/screen registry"]}},
+        {"subarea_id": "default.surface.contracts", "name": "Schemas & Interaction Contracts", "contract": {"outputs": ["schemas", "errors", "state interactions"]}}
+      ]
+    },
+    {
+      "area_id": "default.identity-security",
+      "name": "Identity & Security",
+      "contract": {"owns": ["authentication", "authorization", "tenant/service identity", "security policy"]},
+      "subareas": [
+        {"subarea_id": "default.identity.authn", "name": "Authentication", "contract": {"outputs": ["identity validation"]}},
+        {"subarea_id": "default.identity.authz", "name": "Authorization & Policy", "contract": {"outputs": ["permissions", "deny paths"]}}
+      ]
+    },
+    {
+      "area_id": "default.core-domain",
+      "name": "Core Domain",
+      "contract": {"owns": ["domain model", "business rules", "state machines", "core services"]},
+      "subareas": [
+        {"subarea_id": "default.core.models", "name": "Models & State", "contract": {"outputs": ["domain model", "state transitions"]}},
+        {"subarea_id": "default.core.services", "name": "Services & Logic", "contract": {"outputs": ["core behavior", "invariants"]}}
+      ]
+    },
+    {
+      "area_id": "default.execution",
+      "name": "Execution & Workers",
+      "contract": {"owns": ["background execution", "jobs", "queues", "schedulers", "leases"]},
+      "subareas": [
+        {"subarea_id": "default.execution.runtime", "name": "Runtime Execution", "contract": {"outputs": ["execution loop", "concurrency controls"]}},
+        {"subarea_id": "default.execution.recovery", "name": "Recovery & Retry", "contract": {"outputs": ["retry", "recovery", "replay"]}}
+      ]
+    },
+    {
+      "area_id": "default.integrations",
+      "name": "Integrations & Adapters",
+      "contract": {"owns": ["external adapters", "provider boundaries", "webhooks", "connector contracts"]},
+      "subareas": [
+        {"subarea_id": "default.integrations.adapters", "name": "Adapters", "contract": {"outputs": ["provider adapters", "capability mapping"]}},
+        {"subarea_id": "default.integrations.webhooks", "name": "Events & Webhooks", "contract": {"outputs": ["event contracts", "webhook validation"]}}
+      ]
+    },
+    {
+      "area_id": "default.persistence",
+      "name": "Persistence & Data",
+      "contract": {"owns": ["schema", "migrations", "transactions", "retention", "data ownership"]},
+      "subareas": [
+        {"subarea_id": "default.persistence.schema", "name": "Schema & Models", "contract": {"outputs": ["tables/models", "constraints"]}},
+        {"subarea_id": "default.persistence.lifecycle", "name": "Migrations & Lifecycle", "contract": {"outputs": ["migrations", "retention", "backup compatibility"]}}
+      ]
+    },
+    {
+      "area_id": "default.observability-audit",
+      "name": "Observability & Audit",
+      "contract": {"owns": ["metrics", "logs", "traces", "health", "audit evidence"]},
+      "subareas": [
+        {"subarea_id": "default.observability.telemetry", "name": "Telemetry & Health", "contract": {"outputs": ["metrics", "logs", "traces", "health"]}},
+        {"subarea_id": "default.observability.audit", "name": "Audit & Evidence", "contract": {"outputs": ["audit events", "exact-head evidence"]}}
+      ]
+    },
+    {
+      "area_id": "default.quality",
+      "name": "Testing & Quality",
+      "contract": {"owns": ["unit", "integration", "security", "contract tests", "CI acceptance"]},
+      "subareas": [
+        {"subarea_id": "default.quality.tests", "name": "Tests", "contract": {"outputs": ["focused tests", "integration evidence"]}},
+        {"subarea_id": "default.quality.ci", "name": "CI & Policy Gates", "contract": {"outputs": ["required checks", "security gates"]}}
+      ]
+    },
+    {
+      "area_id": "default.delivery",
+      "name": "Delivery",
+      "contract": {"owns": ["build", "artifact", "staging", "release", "rollback", "post-merge checks"]},
+      "subareas": [
+        {"subarea_id": "default.delivery.build", "name": "Build & Artifact", "contract": {"outputs": ["reproducible artifact", "provenance"]}},
+        {"subarea_id": "default.delivery.release", "name": "Staging / Release / Rollback", "contract": {"outputs": ["promotion evidence", "rollback", "post-merge checks"]}}
+      ]
+    }
+  ]
+}
