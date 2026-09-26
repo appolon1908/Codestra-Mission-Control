@@ -1,35 +1,34 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from datetime import UTC,datetime
 
-@dataclass(frozen=True)
-class RepoSnapshot:
- repository:str; full_name:str; default_branch:str; remote_head:str|None
- archived:bool=False; visibility:str="private"
-
-class RepositorySync:
+class RepositorySyncStore:
  def __init__(self,store):self.store=store
  def initialize(self):
   with self.store.connection() as c:c.executescript("""
-  CREATE TABLE IF NOT EXISTS repository_registry(
-   repository TEXT PRIMARY KEY,full_name TEXT NOT NULL,source TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'DISCOVERED',
-   mission_state TEXT NOT NULL DEFAULT 'UNPLANNED',default_branch TEXT,remote_head TEXT,archived INTEGER NOT NULL DEFAULT 0,
-   visibility TEXT,last_synced_at TEXT);
+  CREATE TABLE IF NOT EXISTS repository_state(
+   repository TEXT PRIMARY KEY,default_branch TEXT,remote_head_sha TEXT,local_head_sha TEXT,
+   local_branch TEXT,dirty INTEGER NOT NULL DEFAULT 0,ahead INTEGER,behind INTEGER,
+   open_prs INTEGER NOT NULL DEFAULT 0,ci_state TEXT NOT NULL DEFAULT 'UNKNOWN',
+   sync_state TEXT NOT NULL DEFAULT 'UNKNOWN',last_synced_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS repository_pr_state(
+   repository TEXT NOT NULL,pr_number INTEGER NOT NULL,title TEXT,state TEXT,head_sha TEXT,base_sha TEXT,
+   draft INTEGER,mergeable TEXT,ci_state TEXT NOT NULL DEFAULT 'UNKNOWN',updated_at TEXT,
+   PRIMARY KEY(repository,pr_number));
   CREATE TABLE IF NOT EXISTS repository_sync_events(
-   id INTEGER PRIMARY KEY AUTOINCREMENT,repository TEXT NOT NULL,event TEXT NOT NULL,old_value TEXT,new_value TEXT,
-   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+   id INTEGER PRIMARY KEY AUTOINCREMENT,repository TEXT NOT NULL,event_type TEXT NOT NULL,
+   detail TEXT,created_at TEXT NOT NULL);
   """)
- def apply(self,s:RepoSnapshot):
-  with self.store.connection() as c:
-   old=c.execute("select * from repository_registry where repository=?",(s.repository,)).fetchone()
-   if old and old["remote_head"] and s.remote_head and old["remote_head"]!=s.remote_head:
-    c.execute("insert into repository_sync_events(repository,event,old_value,new_value) values(?,?,?,?)",
-              (s.repository,"REMOTE_HEAD_CHANGED",old["remote_head"],s.remote_head))
-   c.execute("""insert into repository_registry(repository,full_name,source,status,mission_state,default_branch,remote_head,archived,visibility,last_synced_at)
-    values(?,?,'GitHub','SYNCED','UNPLANNED',?,?,?,?,CURRENT_TIMESTAMP)
-    on conflict(repository) do update set full_name=excluded.full_name,status='SYNCED',default_branch=excluded.default_branch,
-    remote_head=excluded.remote_head,archived=excluded.archived,visibility=excluded.visibility,last_synced_at=CURRENT_TIMESTAMP""",
-    (s.repository,s.full_name,s.default_branch,s.remote_head,int(s.archived),s.visibility))
- def mark_missing(self,present:set[str]):
-  with self.store.connection() as c:
-   for r in c.execute("select repository from repository_registry").fetchall():
-    if r["repository"] not in present:c.execute("update repository_registry set status='MISSING_REMOTE',last_synced_at=CURRENT_TIMESTAMP where repository=?",(r["repository"],))
+ def upsert_repo(self,repository,**state):
+  now=datetime.now(UTC).isoformat()
+  with self.store.connection() as c:c.execute("""insert into repository_state
+   (repository,default_branch,remote_head_sha,local_head_sha,local_branch,dirty,ahead,behind,open_prs,ci_state,sync_state,last_synced_at)
+   values(?,?,?,?,?,?,?,?,?,?,?,?)
+   on conflict(repository) do update set default_branch=excluded.default_branch,remote_head_sha=excluded.remote_head_sha,
+   local_head_sha=excluded.local_head_sha,local_branch=excluded.local_branch,dirty=excluded.dirty,ahead=excluded.ahead,
+   behind=excluded.behind,open_prs=excluded.open_prs,ci_state=excluded.ci_state,sync_state=excluded.sync_state,last_synced_at=excluded.last_synced_at""",
+   (repository,state.get("default_branch"),state.get("remote_head_sha"),state.get("local_head_sha"),state.get("local_branch"),
+    int(state.get("dirty",False)),state.get("ahead"),state.get("behind"),state.get("open_prs",0),state.get("ci_state","UNKNOWN"),
+    state.get("sync_state","UNKNOWN"),now))
+ def snapshot(self,repository):
+  with self.store.connection() as c:r=c.execute("select * from repository_state where repository=?",(repository,)).fetchone()
+  return dict(r) if r else None
