@@ -109,7 +109,7 @@ class DashboardAPI:
                     try:return self.send_json(200,convergence.missions(q.get("status",[None])[0],min(100,int(q.get("limit",["20"])[0])),max(0,int(q.get("offset",["0"])[0]))))
                     except ValueError:return self.send_json(400,{"error_code":"PAGINATION_INVALID","message":"invalid pagination","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 if p.path=="/openapi.json":
-                    try:return self.send_json(200,json.loads(open("OpenAPI/mission-control/openapi.json").read()))
+                    try:return self.send_json(200,json.loads(open("openapi/mission-control/openapi.json").read()))
                     except Exception:return self.send_json(404,{"error":"openapi_missing"})
                 if p.path==PREFIX+"/monitoring-lock":
                     return self.send_json(200,monitoring_lock_snapshot())
