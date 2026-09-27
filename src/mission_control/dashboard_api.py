@@ -83,6 +83,15 @@ class DashboardAPI:
                     from dataclasses import asdict
                     x=asdict(t);x["required_skills"]=sorted(t.required_skills);x["collision_keys"]=sorted(t.collision_keys)
                     return self.send_json(200,{"task":x})
+                if p.path==PREFIX+"/launch-readiness":
+                    repo=q.get("repository",[None])[0]
+                    if not repo:return self.send_json(400,{"error":"repository_required"})
+                    with self.server.store.connection() as c:
+                        try:
+                            t=c.execute("select count(*) n,sum(certified) cert,avg(completion_percent) wip from atomic_tasks where repository=?",(repo,)).fetchone()
+                            x=c.execute("select count(*) n,sum(case when worktree!='UNRESOLVED' and branch!='UNRESOLVED' and base_sha!='UNRESOLVED' then 1 else 0 end) ready from execution_contracts where repository=?",(repo,)).fetchone()
+                            return self.send_json(200,{"repository":repo,"wip_percent":round(t["wip"] or 0,2),"certified_tasks":t["cert"] or 0,"total_tasks":t["n"] or 0,"execution_contracts":x["n"] or 0,"execution_ready":x["ready"] or 0})
+                        except Exception:return self.send_json(503,{"error":"launch_intelligence_not_initialized"})
                 if p.path==PREFIX+"/repository":
                     repo=q.get("repository",[None])[0]
                     if not repo:return self.send_json(400,{"error":"repository_required"})
@@ -93,4 +102,4 @@ class DashboardAPI:
                     return self.send_json(200,{"notifications":oversight.notifications()})
                 return self.send_json(404,{"error":"not_found"})
             def log_message(self,*args): return
-        return ThreadingHTTPServer((host,port),Handler)
+        srv=ThreadingHTTPServer((host,port),Handler);srv.store=self.store;return srv
