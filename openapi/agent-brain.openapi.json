@@ -1,0 +1,294 @@
+{
+  "info": {
+    "title": "Codestra Agent Brain Platform API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/platform/v1/agents/{agent_id}/heartbeat": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "agent heartbeat",
+        "tags": [
+          "agents"
+        ],
+        "x-codestra-effect": "CONTROL",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/agents/{agent_id}/lane": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "current agent lane",
+        "tags": [
+          "agents"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/assignments": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "claim/assign atomic task",
+        "tags": [
+          "router"
+        ],
+        "x-codestra-effect": "CONTROL",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/assignments/{task_id}/move": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "move task between eligible agents",
+        "tags": [
+          "router"
+        ],
+        "x-codestra-effect": "CONTROL",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/connectors": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "connector catalog",
+        "tags": [
+          "catalog"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/dashboard/agents": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "agent/lane presence",
+        "tags": [
+          "dashboard"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/dashboard/notifications": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "notification ledger",
+        "tags": [
+          "dashboard"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/dashboard/repository": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "repository mission graph and PR evidence",
+        "tags": [
+          "dashboard"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/events": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "publish governed realtime event",
+        "tags": [
+          "events"
+        ],
+        "x-codestra-effect": "CONTROL",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/mission-router/next": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "ranked next tasks",
+        "tags": [
+          "router"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/mission-router/snapshot": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "hierarchy and progress",
+        "tags": [
+          "router"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/missions/{mission_id}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "frozen mission charter",
+        "tags": [
+          "missions"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/missions/{mission_id}/ack": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "acknowledge exact mission digest",
+        "tags": [
+          "missions"
+        ],
+        "x-codestra-effect": "CONTROL",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/missions/{mission_id}/graph": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "mission dependency graph",
+        "tags": [
+          "missions"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/notifications": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "notification feed",
+        "tags": [
+          "notifications"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/notifications/{id}/ack": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "acknowledge incident",
+        "tags": [
+          "notifications"
+        ],
+        "x-codestra-effect": "CONTROL",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/repositories/{repository}/prs": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "PR/task evidence",
+        "tags": [
+          "git"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/services": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "service catalog",
+        "tags": [
+          "catalog"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    },
+    "/platform/v1/tasks/{task_id}/evidence": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "evidence matrix",
+        "tags": [
+          "certification"
+        ],
+        "x-codestra-effect": "READ",
+        "x-codestra-reusable": true
+      }
+    }
+  }
+}
