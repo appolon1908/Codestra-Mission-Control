@@ -11,6 +11,7 @@ class RepositoryControlCenter:
                 "SELECT repository,count(*) n FROM agent_lane_presence WHERE repository IS NOT NULL GROUP BY repository").fetchall()}
             tasks={r["repository"]:dict(r) for r in c.execute(
                 """SELECT repository,count(*) total,
+                sum(CASE WHEN completion_percent>0 THEN 1 ELSE 0 END) started,
                 sum(CASE WHEN certified=1 THEN 1 ELSE 0 END) certified,
                 avg(completion_percent) wip FROM atomic_tasks GROUP BY repository""").fetchall()}
         rows=[]
@@ -26,6 +27,15 @@ class RepositoryControlCenter:
                 "sync_source":"Git/GitHub reconciler","pr_source":"GitHub PR reconciler","ci_source":"GitHub CI/checks",
                 "agent_source":"Agent Brain heartbeat registry","progress_source":"Mission Router tasks/evidence",
                 "api_source":"OpenAPI + API catalog",
+                "progress_dimensions":{
+                    "existence":round(100*(work.get("started",0) or 0)/(work.get("total",0) or 1),1) if work.get("total") else None,
+                    "completeness":round(work.get("wip") or 0,1) if work.get("total") else None,
+                    "correctness":round(100*(work.get("certified",0) or 0)/(work.get("total",0) or 1),1) if work.get("total") else None,
+                    "integration":100.0 if ship.get("ci_healthy") is True else (0.0 if ship.get("ci_healthy") is False else None),
+                    "security":None,
+                    "operability":None,
+                },
+                "progress_dimension_basis":{"existence":"Mission Router tasks with implementation progress","completeness":"mean task completion","correctness":"exact task certification","integration":"repository CI health","security":"NO_BOUND_EVIDENCE","operability":"NO_BOUND_EVIDENCE"},
                 "ci_defined":bool(ship.get("ci_defined",0)),"ci_connected":bool(ship.get("ci_connected",0)),
                 "ci_healthy":ship.get("ci_healthy"),"cd_defined":bool(ship.get("cd_defined",0)),
                 "production_locked":bool(ship.get("production_locked",1)),"last_pr_number":ship.get("last_pr_number"),
