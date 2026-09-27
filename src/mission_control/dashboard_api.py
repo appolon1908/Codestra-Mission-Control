@@ -9,6 +9,7 @@ from .assignments import AssignmentStore
 from .realtime_events import RealtimeEvent, RealtimePublisher
 from .repository_sync import RepositorySyncStore
 from .repository_control import RepositoryControlCenter
+from .dashboard_contract import dashboard_contract
 
 PREFIX="/platform/v1/dashboard"
 
@@ -56,6 +57,10 @@ class DashboardAPI:
                 return self.send_json(404,{"error":"not_found"})
             def do_GET(self):
                 p=urlparse(self.path);q=parse_qs(p.query)
+                if p.path==PREFIX+"/contract":
+                    return self.send_json(200,dashboard_contract())
+                if p.path==PREFIX+"/health":
+                    return self.send_json(200,{"status":"ok","service":"agent-brain-dashboard-api"})
                 if p.path==PREFIX+"/repositories":
                     return self.send_json(200,{"repositories":repo_control.rows()})
                 if p.path==PREFIX+"/sources":
