@@ -17,14 +17,14 @@ from .local_work_discovery import LocalWorkDiscovery
 from .convergence_store import ConvergenceStore
 from .security import KeycloakVerifier,AuthError
 from .discovery_engine import DiscoveryEngine
-import os,re,subprocess
+import os,re,subprocess,time
 
 PREFIX="/platform/v1/dashboard"
 
 class DashboardAPI:
     def __init__(self,store): self.store=store
     def server(self,host="127.0.0.1",port=0):
-        model=DashboardReadModel(self.store); local_work=LocalWorkDiscovery(); discovery_engine=DiscoveryEngine(local_work,interval_seconds=int(os.getenv("MISSION_CONTROL_DISCOVERY_INTERVAL","30")),snapshot_path=os.getenv("MISSION_CONTROL_DISCOVERY_SNAPSHOT","/tmp/mission-control-local-work.json")); discovery_engine.start(); convergence=ConvergenceStore(self.store); convergence.initialize(); auth=KeycloakVerifier(); router_store=RouterStore(self.store); router_store.initialize(); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); repo_control=RepositoryControlCenter(self.store); publisher=RealtimePublisher(os.getenv("MISSION_CONTROL_REALTIME_URL","http://127.0.0.1:8791/events"))
+        started=time.monotonic(); model=DashboardReadModel(self.store); local_work=LocalWorkDiscovery(); discovery_engine=DiscoveryEngine(local_work,interval_seconds=int(os.getenv("MISSION_CONTROL_DISCOVERY_INTERVAL","30")),snapshot_path=os.getenv("MISSION_CONTROL_DISCOVERY_SNAPSHOT","/tmp/mission-control-local-work.json")); discovery_engine.start(); convergence=ConvergenceStore(self.store); convergence.initialize(); auth=KeycloakVerifier(); router_store=RouterStore(self.store); router_store.initialize(); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); repo_control=RepositoryControlCenter(self.store); publisher=RealtimePublisher(os.getenv("MISSION_CONTROL_REALTIME_URL","http://127.0.0.1:8791/events"))
         class Handler(BaseHTTPRequestHandler):
             def send_json(self,status,payload):
                 body=json.dumps(payload,default=str).encode()
@@ -100,7 +100,7 @@ class DashboardAPI:
                 if p.path=="/healthz":
                     try: sha=subprocess.check_output(["git","rev-parse","HEAD"],cwd=os.getcwd(),text=True).strip()
                     except Exception: sha="0"*40
-                    return self.send_json(200,{"status":"OK","service_name":"agent-brain-backend","active_sha":sha,"uptime_seconds":0})
+                    return self.send_json(200,{"status":"OK","service_name":"agent-brain-backend","active_sha":sha,"uptime_seconds":round(time.monotonic()-started,3)})
                 if p.path=="/api/v1/repositories/discover":
                     if not self._principal("mission:read"):return
                     return self.send_json(200,discovery_engine.scan_once())

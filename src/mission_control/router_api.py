@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -18,6 +21,7 @@ class MissionRouterAPI:
 
     def server(self, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
         api = self
+        started = time.monotonic()
         auth = KeycloakVerifier()
 
         class Handler(BaseHTTPRequestHandler):
@@ -41,7 +45,10 @@ class MissionRouterAPI:
                 parsed = urlparse(self.path)
                 query = parse_qs(parsed.query)
                 if parsed.path == "/healthz":
-                    return self._json(200, {"status":"OK","service_name":"mission-router"})
+
+                    try: sha=subprocess.check_output(["git","rev-parse","HEAD"],cwd=os.getcwd(),text=True).strip()
+                    except (OSError,subprocess.SubprocessError): sha="0"*40
+                    return self._json(200, {"status":"OK","service_name":"mission-router","active_sha":sha,"uptime_seconds":round(time.monotonic()-started,3)})
                 if parsed.path == f"{PREFIX}/snapshot":
                     if not self._authorized("mission:read"):
                         return
