@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .mission_router import MissionRouter
 from .router_store import RouterStore
+from .security import AuthError, KeycloakVerifier
 
 PREFIX = "/platform/v1/mission-router"
 
@@ -17,6 +18,7 @@ class MissionRouterAPI:
 
     def server(self, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
         api = self
+        auth = KeycloakVerifier()
 
         class Handler(BaseHTTPRequestHandler):
             def _json(self, status: int, payload: object) -> None:
@@ -27,15 +29,29 @@ class MissionRouterAPI:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _authorized(self, permission: str) -> bool:
+                try:
+                    auth.require(self.headers.get("Authorization"), permission)
+                    return True
+                except AuthError as exc:
+                    self._json(exc.status, {"error": exc.code})
+                    return False
+
             def do_GET(self) -> None:
                 parsed = urlparse(self.path)
                 query = parse_qs(parsed.query)
+                if parsed.path == "/healthz":
+                    return self._json(200, {"status":"OK","service_name":"mission-router"})
                 if parsed.path == f"{PREFIX}/snapshot":
+                    if not self._authorized("mission:read"):
+                        return
                     repo = query.get("repository", [None])[0]
                     if not repo:
                         return self._json(400, {"error": "repository_required"})
                     return self._json(200, api.store.snapshot(repo, router=api.router))
                 if parsed.path == f"{PREFIX}/next":
+                    if not self._authorized("mission:read"):
+                        return
                     repo = query.get("repository", [None])[0]
                     agent_id = query.get("agent_id", [None])[0]
                     if not repo or not agent_id:
