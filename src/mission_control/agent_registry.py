@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+import os
 
 
 def _now() -> str:
@@ -98,12 +99,28 @@ class AgentRegistry:
             )
 
     def lanes(self) -> list[dict]:
+        """Return registered agents with proof-derived live state; stale presence never means LIVE."""
+        now=datetime.now(UTC)
         with self.store.connection() as conn:
-            rows = conn.execute("""
-                SELECT r.agent_id,r.provider,r.agent_type,r.display_name,r.skills_json,r.enabled,
-                       p.repository,p.area_id,p.subarea_id,p.mission_id,p.task_id,p.branch,
-                       p.worktree,p.workstation,p.state,p.heartbeat_at,p.lease_expires_at
-                FROM agent_registry r LEFT JOIN agent_lane_presence p ON p.agent_id=r.agent_id
-                ORDER BY r.provider,r.agent_id
-            """).fetchall()
-        return [{**dict(r), "skills": json.loads(r["skills_json"])} for r in rows]
+            rows=conn.execute("""SELECT r.agent_id,r.provider,r.agent_type,r.display_name,r.skills_json,r.enabled,
+             p.repository,p.area_id,p.subarea_id,p.mission_id,p.task_id,p.branch,p.worktree,p.workstation,p.state as declared_state,
+             p.heartbeat_at,p.lease_expires_at FROM agent_registry r LEFT JOIN agent_lane_presence p ON p.agent_id=r.agent_id
+             ORDER BY r.provider,r.agent_id""").fetchall()
+            executions={r['agent_id']:dict(r) for r in conn.execute("SELECT * FROM agent_executions WHERE state IN ('RUNNING','WORKING','STARTED') ORDER BY updated_at").fetchall()}
+            try: leases={r['agent_id']:dict(r) for r in conn.execute("SELECT * FROM work_leases WHERE state IN ('ACTIVE','LEASED','WORKING')").fetchall()}
+            except Exception: leases={}
+        out=[]
+        for row in rows:
+            x=dict(row);hb=x.get('heartbeat_at');fresh=False
+            if hb:
+                try:fresh=now-datetime.fromisoformat(hb)<=timedelta(seconds=90)
+                except ValueError:pass
+            ex=executions.get(x['agent_id']);lease=leases.get(x['agent_id']);pid_alive=False
+            if ex and ex.get('runner_pid'):
+                try:os.kill(int(ex['runner_pid']),0);pid_alive=True
+                except (OSError,ValueError):pass
+            x['live']=bool(fresh and ex and lease and pid_alive and x.get('branch') and x.get('worktree'))
+            x['state']='LIVE' if x['live'] else ('IDLE' if fresh else 'OFFLINE')
+            x['execution_id']=ex.get('execution_id') if ex else None;x['lease_id']=lease.get('lease_id') if lease else None;x['pid_alive']=pid_alive;x['heartbeat_fresh']=fresh
+            x['skills']=json.loads(x.pop('skills_json'));out.append(x)
+        return out
