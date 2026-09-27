@@ -63,7 +63,7 @@ class DashboardAPI:
                     except Exception as exc:return self.send_json(400,{"error_code":"MISSION_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 m=re.fullmatch(r"/api/v1/tasks/([^/]+)/lease",p.path)
                 if m:
-                    principal=self._principal("router:lease")
+                    principal=self._principal_any("router:lease","task:claim")
                     if not principal:return
                     body=self._body();tid=m.group(1)
                     if not any(t.task_id==tid for t in router_store.tasks()):return self.send_json(404,{"error_code":"TASK_NOT_FOUND","message":"task not found","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
