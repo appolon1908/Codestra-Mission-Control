@@ -12,15 +12,14 @@ from .repository_control import RepositoryControlCenter
 from .dashboard_contract import dashboard_contract
 from .monitoring_evidence import snapshot as monitoring_snapshot
 from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
-from .monitoring_evidence import snapshot as monitoring_snapshot
-from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
+from .router_store import RouterStore
 
 PREFIX="/platform/v1/dashboard"
 
 class DashboardAPI:
     def __init__(self,store): self.store=store
     def server(self,host="127.0.0.1",port=0):
-        model=DashboardReadModel(self.store); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); repo_control=RepositoryControlCenter(self.store); publisher=RealtimePublisher("http://127.0.0.1:8791/events")
+        model=DashboardReadModel(self.store); router_store=RouterStore(self.store); router_store.initialize(); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); repo_control=RepositoryControlCenter(self.store); publisher=RealtimePublisher("http://127.0.0.1:8791/events")
         class Handler(BaseHTTPRequestHandler):
             def send_json(self,status,payload):
                 body=json.dumps(payload,default=str).encode()
@@ -31,12 +30,6 @@ class DashboardAPI:
                 self.send_header("Access-Control-Allow-Headers","Content-Type, Authorization")
                 self.send_header("Content-Length",str(len(body)))
                 self.end_headers();self.wfile.write(body)
-            def do_OPTIONS(self):
-                self.send_response(204)
-                self.send_header("Access-Control-Allow-Origin","http://127.0.0.1:8793")
-                self.send_header("Access-Control-Allow-Methods","GET, POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers","Content-Type, Authorization")
-                self.end_headers()
             def do_OPTIONS(self):
                 self.send_response(204)
                 self.send_header("Access-Control-Allow-Origin","http://127.0.0.1:8793")
@@ -65,10 +58,6 @@ class DashboardAPI:
                     return self.send_json(200,monitoring_lock_snapshot())
                 if p.path==PREFIX+"/monitoring-governance":
                     return self.send_json(200,monitoring_snapshot())
-                if p.path==PREFIX+"/monitoring-lock":
-                    return self.send_json(200,monitoring_lock_snapshot())
-                if p.path==PREFIX+"/monitoring-governance":
-                    return self.send_json(200,monitoring_snapshot())
                 if p.path==PREFIX+"/contract":
                     return self.send_json(200,dashboard_contract())
                 if p.path==PREFIX+"/health":
@@ -85,6 +74,15 @@ class DashboardAPI:
                       "progress":"Mission Router atomic tasks + certification evidence",
                       "apis":"OpenAPI authority + API catalog",
                       "realtime":"standalone WebSocket gateway :8791"}})
+                if p.path==PREFIX+"/task":
+                    tid=q.get("task_id",[None])[0]
+                    if not tid:return self.send_json(400,{"error":"task_id_required"})
+                    rows=[t for t in router_store.tasks() if t.task_id==tid]
+                    if not rows:return self.send_json(404,{"error":"canonical_task_missing"})
+                    t=rows[0]
+                    from dataclasses import asdict
+                    x=asdict(t);x["required_skills"]=sorted(t.required_skills);x["collision_keys"]=sorted(t.collision_keys)
+                    return self.send_json(200,{"task":x})
                 if p.path==PREFIX+"/repository":
                     repo=q.get("repository",[None])[0]
                     if not repo:return self.send_json(400,{"error":"repository_required"})
