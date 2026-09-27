@@ -21,4 +21,4 @@ def test_clean_detached_worktree_is_not_called_unpublished(tmp_path):
  git(r,"init");git(r,"config","user.email","test@example.com");git(r,"config","user.name","Test")
  (r/"a").write_text("x");git(r,"add","a");git(r,"commit","-m","base");git(r,"checkout","--detach")
  rows=LocalWorkDiscovery(root).scan("Caddy",48)
- assert rows[0]["classification"]=="REPRESENTED"
+ assert rows[0]["classification"]=="PRESERVED_EVIDENCE"

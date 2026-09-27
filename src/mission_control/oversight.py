@@ -109,7 +109,7 @@ class OversightStore:
         stale: list[str] = []
         for lane in agent_registry.lanes():
             heartbeat = lane.get("heartbeat_at")
-            state = lane.get("state")
+            state = lane.get("declared_state") or lane.get("state")
             if not heartbeat or state not in {"WORKING", "CLAIMED", "REVIEWING", "TESTING"}:
                 continue
             if datetime.fromisoformat(heartbeat) <= cutoff:

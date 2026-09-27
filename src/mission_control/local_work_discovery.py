@@ -58,14 +58,19 @@ class LocalWorkDiscovery:
                     try: behind,ahead=map(int,ab)
                     except ValueError: pass
                 recent=dt>=cutoff
+                lower=branch.lower()
                 if dirty:
                     cls,reason="DIRTY_UNCLASSIFIED",f"{dirty} working-tree entries require preservation/classification"
                 elif ahead and behind:
                     cls,reason="NEEDS_RECONCILIATION",f"local/remote diverged: ahead {ahead}, behind {behind}"
+                elif branch=="DETACHED" or lower.startswith(("preserve/","archive/","backup/","recovery/")):
+                    cls,reason="PRESERVED_EVIDENCE","clean preservation/evidence lane"
                 elif ahead:
                     cls,reason="UNPUBLISHED_IMPLEMENTATION",f"clean local lane is {ahead} commit(s) ahead of upstream"
-                elif branch=="DETACHED":
-                    cls,reason="REPRESENTED","clean detached evidence/certification worktree"
+                elif ahead is None and recent and lower.startswith(("feature/","mission/","impl/","convergence/","work/")):
+                    cls,reason="ACTIVE_IMPLEMENTATION","recent clean implementation lane has no upstream tracking authority"
+                elif ahead==0 and behind==0 and branch not in {"main","master"} and recent:
+                    cls,reason="READY_FOR_CERTIFICATION","clean tracked implementation lane matches upstream"
                 elif ahead is None and recent:
                     cls,reason="UNPUBLISHED_IMPLEMENTATION","recent clean branch has no upstream tracking authority"
                 else:

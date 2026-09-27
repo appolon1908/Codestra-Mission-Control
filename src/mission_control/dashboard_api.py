@@ -14,13 +14,17 @@ from .monitoring_evidence import snapshot as monitoring_snapshot
 from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
 from .router_store import RouterStore
 from .local_work_discovery import LocalWorkDiscovery
+from .convergence_store import ConvergenceStore
+from .security import KeycloakVerifier,AuthError
+from .discovery_engine import DiscoveryEngine
+import os,re,subprocess
 
 PREFIX="/platform/v1/dashboard"
 
 class DashboardAPI:
     def __init__(self,store): self.store=store
     def server(self,host="127.0.0.1",port=0):
-        model=DashboardReadModel(self.store); local_work=LocalWorkDiscovery(); router_store=RouterStore(self.store); router_store.initialize(); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); repo_control=RepositoryControlCenter(self.store); publisher=RealtimePublisher("http://127.0.0.1:8791/events")
+        model=DashboardReadModel(self.store); local_work=LocalWorkDiscovery(); discovery_engine=DiscoveryEngine(local_work,interval_seconds=int(os.getenv("MISSION_CONTROL_DISCOVERY_INTERVAL","30")),snapshot_path=os.getenv("MISSION_CONTROL_DISCOVERY_SNAPSHOT","/tmp/mission-control-local-work.json")); discovery_engine.start(); convergence=ConvergenceStore(self.store); convergence.initialize(); auth=KeycloakVerifier(); router_store=RouterStore(self.store); router_store.initialize(); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); repo_control=RepositoryControlCenter(self.store); publisher=RealtimePublisher("http://127.0.0.1:8791/events")
         class Handler(BaseHTTPRequestHandler):
             def send_json(self,status,payload):
                 body=json.dumps(payload,default=str).encode()
@@ -37,8 +41,46 @@ class DashboardAPI:
                 self.send_header("Access-Control-Allow-Methods","GET, POST, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers","Content-Type, Authorization")
                 self.end_headers()
+            def _principal(self,permission):
+                try:return auth.require(self.headers.get("Authorization"),permission)
+                except AuthError as exc:self.send_json(exc.status,{"error_code":exc.code,"message":exc.code,"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()});return None
+            def _body(self):
+                length=int(self.headers.get("Content-Length","0"));return json.loads(self.rfile.read(length) or b"{}")
             def do_POST(self):
                 p=urlparse(self.path)
+                if p.path=="/api/v1/missions":
+                    if not self._principal("mission:write"):return
+                    try:
+                        body=self._body()
+                        if not body.get("product_goal") or not body.get("business_reason"):return self.send_json(400,{"error_code":"MISSION_FIELDS_REQUIRED","message":"product_goal and business_reason required","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                        return self.send_json(201,convergence.create_mission(body))
+                    except Exception as exc:return self.send_json(400,{"error_code":"MISSION_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                m=re.fullmatch(r"/api/v1/tasks/([^/]+)/lease",p.path)
+                if m:
+                    principal=self._principal("router:lease")
+                    if not principal:return
+                    body=self._body();tid=m.group(1)
+                    if not any(t.task_id==tid for t in router_store.tasks()):return self.send_json(404,{"error_code":"TASK_NOT_FOUND","message":"task not found","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                    try:
+                        lease=convergence.lease(tid,body["agent_id"],int(body.get("heartbeat_interval_sec",30)))
+                        task=next(t for t in router_store.tasks() if t.task_id==tid)
+                        with self.server.store.connection() as c: ec=c.execute("select * from execution_contracts where task_id=?",(tid,)).fetchone()
+                        contract=dict(ec) if ec else {}
+                        parse=lambda k: json.loads(contract.get(k) or "[]")
+                        return self.send_json(200,{"task_id":tid,"stage":contract.get("stage") or "IMPLEMENTATION","product_goal":"Mission Control governed execution","business_reason":contract.get("objective") or "Execute the smallest safe ready task","target_repository":task.repository,"canonical_checkout":contract.get("worktree"),"branch":contract.get("branch"),"base_sha":contract.get("base_sha"),"writable_scope":parse("writable_scope_json"),"read_only_scope":parse("readonly_dependencies_json"),"forbidden_scope":parse("forbidden_scope_json"),"dependencies":list(task.dependencies),"collision_set":sorted(task.collision_keys),"acceptance_criteria":parse("acceptance_json"),"required_evidence":parse("evidence_json"),"apis":parse("api_operations_json"),"headers":parse("headers_json"),"lease":lease})
+                    except ValueError as exc:return self.send_json(409,{"error_code":str(exc),"message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                if p.path=="/api/v1/agents/heartbeat":
+                    if not self._principal("agent:heartbeat"):return
+                    try:return self.send_json(200,convergence.heartbeat(self._body()))
+                    except (KeyError,ValueError) as exc:return self.send_json(404,{"error_code":str(exc),"message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                if p.path=="/api/v1/certifications":
+                    principal=self._principal("evidence:certify")
+                    if not principal:return
+                    try:
+                        body=self._body()
+                        if not re.fullmatch(r"[0-9a-f]{40}",body.get("exact_sha","")):raise ValueError("exact_sha_invalid")
+                        result=convergence.certify(body);return self.send_json(201 if result["status"]=="CERTIFIED" else 422,result)
+                    except Exception as exc:return self.send_json(422,{"error_code":"EVIDENCE_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 if p.path=="/platform/v1/assignments":
                     length=int(self.headers.get("Content-Length","0"))
                     try:
@@ -55,6 +97,20 @@ class DashboardAPI:
                 return self.send_json(404,{"error":"not_found"})
             def do_GET(self):
                 p=urlparse(self.path);q=parse_qs(p.query)
+                if p.path=="/healthz":
+                    try: sha=subprocess.check_output(["git","rev-parse","HEAD"],cwd=os.getcwd(),text=True).strip()
+                    except Exception: sha="0"*40
+                    return self.send_json(200,{"status":"OK","service_name":"agent-brain-backend","active_sha":sha,"uptime_seconds":0})
+                if p.path=="/api/v1/repositories/discover":
+                    if not self._principal("mission:read"):return
+                    return self.send_json(200,discovery_engine.scan_once())
+                if p.path=="/api/v1/missions":
+                    if not self._principal("mission:read"):return
+                    try:return self.send_json(200,convergence.missions(q.get("status",[None])[0],min(100,int(q.get("limit",["20"])[0])),max(0,int(q.get("offset",["0"])[0]))))
+                    except ValueError:return self.send_json(400,{"error_code":"PAGINATION_INVALID","message":"invalid pagination","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                if p.path=="/openapi.json":
+                    try:return self.send_json(200,json.loads(open("OpenAPI/mission-control/openapi.json").read()))
+                    except Exception:return self.send_json(404,{"error":"openapi_missing"})
                 if p.path==PREFIX+"/monitoring-lock":
                     return self.send_json(200,monitoring_lock_snapshot())
                 if p.path==PREFIX+"/monitoring-governance":
