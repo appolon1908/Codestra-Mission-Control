@@ -64,8 +64,10 @@ class LocalWorkDiscovery:
                     cls,reason="NEEDS_RECONCILIATION",f"local/remote diverged: ahead {ahead}, behind {behind}"
                 elif ahead:
                     cls,reason="UNPUBLISHED_IMPLEMENTATION",f"clean local lane is {ahead} commit(s) ahead of upstream"
+                elif branch=="DETACHED":
+                    cls,reason="REPRESENTED","clean detached evidence/certification worktree"
                 elif ahead is None and recent:
-                    cls,reason="UNPUBLISHED_IMPLEMENTATION","recent clean lane has no upstream tracking authority"
+                    cls,reason="UNPUBLISHED_IMPLEMENTATION","recent clean branch has no upstream tracking authority"
                 else:
                     cls,reason="REPRESENTED","clean lane has no proof of unpublished local commits"
                 if recent or dirty or cls!="REPRESENTED":
