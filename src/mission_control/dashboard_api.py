@@ -13,13 +13,14 @@ from .dashboard_contract import dashboard_contract
 from .monitoring_evidence import snapshot as monitoring_snapshot
 from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
 from .router_store import RouterStore
+from .local_work_discovery import LocalWorkDiscovery
 
 PREFIX="/platform/v1/dashboard"
 
 class DashboardAPI:
     def __init__(self,store): self.store=store
     def server(self,host="127.0.0.1",port=0):
-        model=DashboardReadModel(self.store); router_store=RouterStore(self.store); router_store.initialize(); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); repo_control=RepositoryControlCenter(self.store); publisher=RealtimePublisher("http://127.0.0.1:8791/events")
+        model=DashboardReadModel(self.store); local_work=LocalWorkDiscovery(); router_store=RouterStore(self.store); router_store.initialize(); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); repo_control=RepositoryControlCenter(self.store); publisher=RealtimePublisher("http://127.0.0.1:8791/events")
         class Handler(BaseHTTPRequestHandler):
             def send_json(self,status,payload):
                 body=json.dumps(payload,default=str).encode()
@@ -64,6 +65,11 @@ class DashboardAPI:
                     return self.send_json(200,{"status":"ok","service":"agent-brain-dashboard-api"})
                 if p.path==PREFIX+"/repositories":
                     return self.send_json(200,{"repositories":repo_control.rows()})
+                if p.path==PREFIX+"/local-work":
+                    repo=q.get("repository",[None])[0]
+                    try: hours=int(q.get("recent_hours",["48"])[0])
+                    except ValueError: return self.send_json(400,{"error":"recent_hours_invalid"})
+                    return self.send_json(200,local_work.summary(repo,hours))
                 if p.path==PREFIX+"/sources":
                     return self.send_json(200,{"sources":{
                       "repositories":"GitHub repository inventory + local reconciler",
