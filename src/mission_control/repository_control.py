@@ -22,5 +22,8 @@ class RepositoryControlCenter:
                 "wip_percent":round(work.get("wip") or 0,1),
                 "certified_tasks":work.get("certified",0) or 0,"total_tasks":work.get("total",0) or 0,
                 "remote_head_sha":state.get("remote_head_sha"),"last_synced_at":state.get("last_synced_at"),
+                "sync_source":"Git/GitHub reconciler","pr_source":"GitHub PR reconciler","ci_source":"GitHub CI/checks",
+                "agent_source":"Agent Brain heartbeat registry","progress_source":"Mission Router tasks/evidence",
+                "api_source":"OpenAPI + API catalog",
             })
         return rows

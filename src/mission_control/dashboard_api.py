@@ -58,6 +58,16 @@ class DashboardAPI:
                 p=urlparse(self.path);q=parse_qs(p.query)
                 if p.path==PREFIX+"/repositories":
                     return self.send_json(200,{"repositories":repo_control.rows()})
+                if p.path==PREFIX+"/sources":
+                    return self.send_json(200,{"sources":{
+                      "repositories":"GitHub repository inventory + local reconciler",
+                      "sync":"Git/GitHub remote/local SHA reconciler",
+                      "prs":"GitHub pull requests",
+                      "ci":"GitHub checks/CI",
+                      "agents":"Agent Brain heartbeat/lease registry",
+                      "progress":"Mission Router atomic tasks + certification evidence",
+                      "apis":"OpenAPI authority + API catalog",
+                      "realtime":"standalone WebSocket gateway :8791"}})
                 if p.path==PREFIX+"/repository":
                     repo=q.get("repository",[None])[0]
                     if not repo:return self.send_json(400,{"error":"repository_required"})
