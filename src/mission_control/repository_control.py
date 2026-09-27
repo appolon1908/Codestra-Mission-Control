@@ -6,6 +6,7 @@ class RepositoryControlCenter:
         with self.store.connection() as c:
             repos=c.execute("SELECT * FROM repository_registry ORDER BY repository COLLATE NOCASE").fetchall()
             states={r["repository"]:dict(r) for r in c.execute("SELECT * FROM repository_state").fetchall()}
+            delivery={r["repository"]:dict(r) for r in c.execute("SELECT * FROM repository_delivery_state").fetchall()}
             agents={r["repository"]:r["n"] for r in c.execute(
                 "SELECT repository,count(*) n FROM agent_lane_presence WHERE repository IS NOT NULL GROUP BY repository").fetchall()}
             tasks={r["repository"]:dict(r) for r in c.execute(
@@ -14,7 +15,7 @@ class RepositoryControlCenter:
                 avg(completion_percent) wip FROM atomic_tasks GROUP BY repository""").fetchall()}
         rows=[]
         for repo in repos:
-            name=repo["repository"]; state=states.get(name,{}); work=tasks.get(name,{})
+            name=repo["repository"]; state=states.get(name,{}); work=tasks.get(name,{}); ship=delivery.get(name,{})
             rows.append({
                 "repository":name,"full_name":repo["full_name"],"planning":repo["mission_state"],
                 "sync_state":state.get("sync_state","UNKNOWN"),"open_prs":state.get("open_prs",0) or 0,
@@ -25,5 +26,10 @@ class RepositoryControlCenter:
                 "sync_source":"Git/GitHub reconciler","pr_source":"GitHub PR reconciler","ci_source":"GitHub CI/checks",
                 "agent_source":"Agent Brain heartbeat registry","progress_source":"Mission Router tasks/evidence",
                 "api_source":"OpenAPI + API catalog",
+                "ci_defined":bool(ship.get("ci_defined",0)),"ci_connected":bool(ship.get("ci_connected",0)),
+                "ci_healthy":ship.get("ci_healthy"),"cd_defined":bool(ship.get("cd_defined",0)),
+                "production_locked":bool(ship.get("production_locked",1)),"last_pr_number":ship.get("last_pr_number"),
+                "last_pr_title":ship.get("last_pr_title"),"last_pr_head_sha":ship.get("last_pr_head_sha"),
+                "last_pr_pushed_at":ship.get("last_pr_pushed_at"),"last_pr_updated_at":ship.get("last_pr_updated_at"),
             })
         return rows
