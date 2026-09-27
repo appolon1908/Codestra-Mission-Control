@@ -103,7 +103,7 @@ class DashboardAPI:
                     return self.send_json(200,{"status":"OK","service_name":"agent-brain-backend","active_sha":sha,"uptime_seconds":round(time.monotonic()-started,3)})
                 if p.path=="/api/v1/repositories/discover":
                     if not self._principal("mission:read"):return
-                    return self.send_json(200,discovery_engine.scan_once())
+                    return self.send_json(200,discovery_engine.latest)
                 if p.path=="/api/v1/missions":
                     if not self._principal("mission:read"):return
                     try:return self.send_json(200,convergence.missions(q.get("status",[None])[0],min(100,int(q.get("limit",["20"])[0])),max(0,int(q.get("offset",["0"])[0]))))

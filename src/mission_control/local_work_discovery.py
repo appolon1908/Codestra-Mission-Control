@@ -24,7 +24,11 @@ class LocalWorkDiscovery:
 
     @staticmethod
     def _git(path: Path,*args: str,check: bool=True) -> str:
-        p=subprocess.run(["git","-c",f"safe.directory={path}","-C",str(path),*args],text=True,capture_output=True)
+        try:
+            p=subprocess.run(["git","-c",f"safe.directory={path}","-C",str(path),*args],text=True,capture_output=True,timeout=5,check=False)
+        except subprocess.TimeoutExpired:
+            if check: raise RuntimeError("git_timeout")
+            return ""
         if check and p.returncode: raise RuntimeError(p.stderr.strip() or "git_failed")
         return p.stdout.strip()
 
@@ -33,6 +37,9 @@ class LocalWorkDiscovery:
             p=self.root/repository
             return [(repository,p)] if (p/".git").exists() else []
         return [(p.name,p) for p in sorted(self.root.iterdir()) if p.is_dir() and (p/".git").exists()]
+
+    def repository_names(self) -> list[str]:
+        return [name for name,_ in self._repos(None)]
 
     def scan(self,repository: str|None=None,recent_hours: int=48) -> list[dict]:
         cutoff=datetime.now(timezone.utc)-timedelta(hours=max(1,min(recent_hours,720)))
