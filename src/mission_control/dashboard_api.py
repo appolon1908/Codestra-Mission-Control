@@ -10,6 +10,8 @@ from .realtime_events import RealtimeEvent, RealtimePublisher
 from .repository_sync import RepositorySyncStore
 from .repository_control import RepositoryControlCenter
 from .dashboard_contract import dashboard_contract
+from .monitoring_evidence import snapshot as monitoring_snapshot
+from .monitoring_evidence import snapshot as monitoring_snapshot
 
 PREFIX="/platform/v1/dashboard"
 
@@ -57,6 +59,10 @@ class DashboardAPI:
                 return self.send_json(404,{"error":"not_found"})
             def do_GET(self):
                 p=urlparse(self.path);q=parse_qs(p.query)
+                if p.path==PREFIX+"/monitoring-governance":
+                    return self.send_json(200,monitoring_snapshot())
+                if p.path==PREFIX+"/monitoring-governance":
+                    return self.send_json(200,monitoring_snapshot())
                 if p.path==PREFIX+"/contract":
                     return self.send_json(200,dashboard_contract())
                 if p.path==PREFIX+"/health":
