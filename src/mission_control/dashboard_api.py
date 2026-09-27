@@ -74,6 +74,22 @@ class DashboardAPI:
                       "progress":"Mission Router atomic tasks + certification evidence",
                       "apis":"OpenAPI authority + API catalog",
                       "realtime":"standalone WebSocket gateway :8791"}})
+                if p.path==PREFIX+"/tasks":
+                    repo=q.get("repository",[None])[0]
+                    if not repo:return self.send_json(400,{"error":"repository_required"})
+                    rows=[t for t in router_store.tasks() if t.repository==repo]
+                    from dataclasses import asdict
+                    out=[]
+                    with self.server.store.connection() as c:
+                        for t in rows:
+                            x=asdict(t);x["required_skills"]=sorted(t.required_skills);x["collision_keys"]=sorted(t.collision_keys)
+                            try:
+                                ec=c.execute("select stage,worktree,branch,base_sha,objective from execution_contracts where task_id=?",(t.task_id,)).fetchone()
+                                if ec:x["execution_contract"]=dict(ec);x["execution_ready"]=all(ec[k] not in (None,'','UNRESOLVED') for k in ('worktree','branch','base_sha'))
+                                else:x["execution_ready"]=False
+                            except Exception:x["execution_ready"]=False
+                            out.append(x)
+                    return self.send_json(200,{"repository":repo,"tasks":out})
                 if p.path==PREFIX+"/task":
                     tid=q.get("task_id",[None])[0]
                     if not tid:return self.send_json(400,{"error":"task_id_required"})
