@@ -66,7 +66,9 @@ class MissionRouterAPI:
                     agent = api.store.agent(agent_id)
                     if not agent:
                         return self._json(404, {"error": "agent_not_registered"})
-                    ranked = api.router.rank(api.store.tasks(repo), agent)
+                    tasks = api.store.tasks(repo)
+                    completed = {t.task_id for t in tasks if t.certified or t.completion_percent >= 100}
+                    ranked = api.router.rank(tasks, agent, completed=completed)
                     return self._json(200, {"agent_id": agent_id, "repository": repo,
                         "next": [{"task_id": r.task.task_id, "score": r.score, "reasons": r.reasons}
                                  for r in ranked[:10]]})

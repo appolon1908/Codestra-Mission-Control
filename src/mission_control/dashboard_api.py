@@ -44,6 +44,12 @@ class DashboardAPI:
             def _principal(self,permission):
                 try:return auth.require(self.headers.get("Authorization"),permission)
                 except AuthError as exc:self.send_json(exc.status,{"error_code":exc.code,"message":exc.code,"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()});return None
+            def _principal_any(self,*permissions):
+                try:
+                    principal=auth.verify(self.headers.get("Authorization"))
+                    if any(principal.allows(p) for p in permissions): return principal
+                    raise AuthError("insufficient_permission",403)
+                except AuthError as exc:self.send_json(exc.status,{"error_code":exc.code,"message":exc.code,"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()});return None
             def _body(self):
                 length=int(self.headers.get("Content-Length","0"));return json.loads(self.rfile.read(length) or b"{}")
             def do_POST(self):
@@ -70,8 +76,13 @@ class DashboardAPI:
                         return self.send_json(200,{"task_id":tid,"stage":contract.get("stage") or "IMPLEMENTATION","product_goal":"Mission Control governed execution","business_reason":contract.get("objective") or "Execute the smallest safe ready task","target_repository":task.repository,"canonical_checkout":contract.get("worktree"),"branch":contract.get("branch"),"base_sha":contract.get("base_sha"),"writable_scope":parse("writable_scope_json"),"read_only_scope":parse("readonly_dependencies_json"),"forbidden_scope":parse("forbidden_scope_json"),"dependencies":list(task.dependencies),"collision_set":sorted(task.collision_keys),"acceptance_criteria":parse("acceptance_json"),"required_evidence":parse("evidence_json"),"apis":parse("api_operations_json"),"headers":parse("headers_json"),"lease":lease})
                     except ValueError as exc:return self.send_json(409,{"error_code":str(exc),"message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 if p.path=="/api/v1/agents/heartbeat":
-                    if not self._principal("agent:heartbeat"):return
-                    try:return self.send_json(200,convergence.heartbeat(self._body()))
+                    principal=self._principal("agent:heartbeat")
+                    if not principal:return
+                    body=self._body()
+                    if auth.mode=="required":
+                        bound=principal.claims.get("agent_id") or principal.claims.get("preferred_username") or principal.subject
+                        if body.get("agent_id")!=bound:return self.send_json(403,{"error_code":"agent_identity_mismatch","message":"agent identity does not match token","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                    try:return self.send_json(200,convergence.heartbeat(body))
                     except (KeyError,ValueError) as exc:return self.send_json(404,{"error_code":str(exc),"message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 if p.path=="/api/v1/certifications":
                     principal=self._principal("evidence:certify")
@@ -82,6 +93,7 @@ class DashboardAPI:
                         result=convergence.certify(body);return self.send_json(201 if result["status"]=="CERTIFIED" else 422,result)
                     except Exception as exc:return self.send_json(422,{"error_code":"EVIDENCE_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 if p.path=="/platform/v1/assignments":
+                    if not self._principal_any("agent:assign","task:claim"):return
                     length=int(self.headers.get("Content-Length","0"))
                     try:
                         body=json.loads(self.rfile.read(length) or b"{}")
@@ -90,7 +102,8 @@ class DashboardAPI:
                             return self.send_json(400,{"error":"assignment_fields_required"})
                         claim=assignments.claim(**{k:body[k] for k in required})
                         agents.heartbeat(body["agent_id"],state="CLAIMED",repository=body["repository"],area_id=body["area"],subarea_id=body["subarea"],task_id=body["task_id"],mission_id=body.get("mission_id"),workstation="UBUNTU_DESKTOP")
-                        publisher.publish_http(RealtimeEvent.create("mission.task.claimed",{"task_id":body["task_id"],"agent_id":body["agent_id"],"repository":body["repository"]}))
+                        try: publisher.publish_http(RealtimeEvent.create("mission.task.claimed",{"task_id":body["task_id"],"agent_id":body["agent_id"],"repository":body["repository"]}))
+                        except Exception: pass
                         return self.send_json(201,claim.__dict__)
                     except ValueError as exc:
                         return self.send_json(409,{"error":str(exc)})

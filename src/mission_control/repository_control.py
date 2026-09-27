@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 class RepositoryControlCenter:
-    def __init__(self, store): self.store=store
+    def __init__(self, store):
+        self.store=store
+        with self.store.connection() as c:
+            c.execute("""CREATE TABLE IF NOT EXISTS repository_registry(
+                repository TEXT PRIMARY KEY, full_name TEXT, source TEXT, status TEXT, mission_state TEXT)""")
     def rows(self):
         with self.store.connection() as c:
             repos=c.execute("SELECT * FROM repository_registry ORDER BY repository COLLATE NOCASE").fetchall()

@@ -38,13 +38,19 @@ class ConvergenceStore:
  def heartbeat(self,body):
   now=datetime.now(UTC)
   if body.get("status") not in STATES: raise ValueError("INVALID_TASK_STATE")
+  token=body.get("lease_token")
+  if not token: raise ValueError("LEASE_TOKEN_REQUIRED")
   with self.store.connection() as c:
-   row=c.execute("SELECT * FROM task_leases_v2 WHERE task_id=? AND agent_id=?",(body["task_id"],body["agent_id"])).fetchone()
+   row=c.execute("SELECT * FROM task_leases_v2 WHERE task_id=? AND agent_id=? AND lease_token=?",(body["task_id"],body["agent_id"],token)).fetchone()
    if not row or datetime.fromisoformat(row["expires_at"])<=now: raise KeyError("LEASE_EXPIRED")
    expiry=now+timedelta(seconds=90)
    c.execute("UPDATE task_leases_v2 SET state=?,current_sha=?,changed_files_count=?,heartbeat_at=?,expires_at=? WHERE task_id=?",(body["status"],body["current_sha"],int(body.get("changed_files_count",0)),now.isoformat(),expiry.isoformat(),body["task_id"]))
   return {"acknowledged":True,"next_heartbeat_due":(now+timedelta(seconds=30)).isoformat(),"lease_expires_at":expiry.isoformat()}
  def certify(self,body):
   rate=float(body["test_pass_rate"]); status="CERTIFIED" if rate==100.0 else "REJECTED";cid=str(uuid.uuid4());now=datetime.now(UTC).isoformat()
-  with self.store.connection() as c:c.execute("INSERT INTO certifications_v2 VALUES(?,?,?,?,?,?,?,?)",(cid,body["task_id"],body["exact_sha"],rate,body["artifact_url"],body.get("ci_job_id"),status,now))
+  with self.store.connection() as c:
+   c.execute("INSERT INTO certifications_v2 VALUES(?,?,?,?,?,?,?,?)",(cid,body["task_id"],body["exact_sha"],rate,body["artifact_url"],body.get("ci_job_id"),status,now))
+   if status=="CERTIFIED":
+    updated=c.execute("UPDATE atomic_tasks SET certified=1,completion_percent=100 WHERE task_id=?",(body["task_id"],)).rowcount
+    if updated!=1: raise ValueError("TASK_NOT_FOUND")
   return {"certification_id":cid,"task_id":body["task_id"],"exact_sha":body["exact_sha"],"certified_at":now,"status":status}

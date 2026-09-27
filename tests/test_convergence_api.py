@@ -24,6 +24,6 @@ def test_production_aliases_lease_heartbeat_and_certify(tmp_path,monkeypatch):
  try:
   st,x=req(srv,"/api/v1/missions","POST",{"product_goal":"Converge","business_reason":"truth"});assert st==201 and x["mission_id"].startswith("MISSION-")
   st,x=req(srv,"/api/v1/tasks/T1/lease","POST",{"agent_id":"agent-1"});assert st==200 and x["base_sha"]=="a"*40 and x["collision_set"]==["src/x"]
-  st,x=req(srv,"/api/v1/agents/heartbeat","POST",{"agent_id":"agent-1","task_id":"T1","current_sha":"b"*40,"status":"ACTIVE","changed_files_count":1});assert st==200 and x["acknowledged"]
+  st,x=req(srv,"/api/v1/agents/heartbeat","POST",{"agent_id":"agent-1","task_id":"T1","lease_token":x["lease"]["lease_token"],"current_sha":"b"*40,"status":"ACTIVE","changed_files_count":1});assert st==200 and x["acknowledged"]
   st,x=req(srv,"/api/v1/certifications","POST",{"task_id":"T1","exact_sha":"b"*40,"test_pass_rate":100,"artifact_url":"file:///tmp/evidence"});assert st==201 and x["status"]=="CERTIFIED"
  finally:srv.shutdown();srv.server_close()
