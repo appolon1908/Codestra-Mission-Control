@@ -102,16 +102,16 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 68 | `appolon1908/openrerefine-` | `openrerefine-` | `main` | public | SETUP_SPEC_READY |
 | 69 | `appolon1908/Leads-Workstation` | `Leads-Workstation` | `main` | private | SETUP_SPEC_READY |
 | 70 | `appolon1908/Meltano-Leads-Importer` | `Meltano-Leads-Importer` | `main` | private | SETUP_SPEC_READY |
-| 71 | `appolon1908/FACE-ID` | `FACE-ID` | `main` | public | PENDING_CREATE |
-| 72 | `appolon1908/InsightFace` | `InsightFace` | `main` | public | PENDING_CREATE |
-| 73 | `appolon1908/WhatsApp` | `WhatsApp` | `main` | public | PENDING_CREATE |
-| 74 | `appolon1908/Evolution-API` | `Evolution-API` | `main` | public | PENDING_CREATE |
-| 75 | `appolon1908/chatbox` | `chatbox` | `main` | public | PENDING_CREATE |
-| 76 | `appolon1908/Codestra-Face-Liveness` | `Codestra-Face-Liveness` | `main` | private | PENDING_CREATE |
-| 77 | `appolon1908/Codestra-Camera-Gateway` | `Codestra-Camera-Gateway` | `main` | private | PENDING_CREATE |
-| 78 | `appolon1908/Codestra-PostgreSQL` | `Codestra-PostgreSQL` | `main` | private | PENDING_CREATE |
-| 79 | `appolon1908/Codestra-Connect` | `Codestra-Connect` | `main` | private | PENDING_CREATE |
-| 80 | `appolon1908/Codestra-Document-Intelligence` | `Codestra-Document-Intelligence` | `main` | private | PENDING_CREATE |
+| 71 | `appolon1908/FACE-ID` | `FACE-ID` | `main` | public | SETUP_SPEC_READY |
+| 72 | `appolon1908/InsightFace` | `InsightFace` | `main` | public | SETUP_SPEC_READY |
+| 73 | `appolon1908/WhatsApp` | `WhatsApp` | `main` | public | SETUP_SPEC_READY |
+| 74 | `appolon1908/Evolution-API` | `Evolution-API` | `main` | public | SETUP_SPEC_READY |
+| 75 | `appolon1908/chatbox` | `chatbox` | `main` | public | SETUP_SPEC_READY |
+| 76 | `appolon1908/Codestra-Face-Liveness` | `Codestra-Face-Liveness` | `main` | private | SETUP_SPEC_READY |
+| 77 | `appolon1908/Codestra-Camera-Gateway` | `Codestra-Camera-Gateway` | `main` | private | SETUP_SPEC_READY |
+| 78 | `appolon1908/Codestra-PostgreSQL` | `Codestra-PostgreSQL` | `main` | private | SETUP_SPEC_READY |
+| 79 | `appolon1908/Codestra-Connect` | `Codestra-Connect` | `main` | private | SETUP_SPEC_READY |
+| 80 | `appolon1908/Codestra-Document-Intelligence` | `Codestra-Document-Intelligence` | `main` | private | SETUP_SPEC_READY |
 | 81 | `appolon1908/Codestra-OCR-Workers` | `Codestra-OCR-Workers` | `main` | private | PENDING_CREATE |
 | 82 | `appolon1908/Codestra-Document-Schemas` | `Codestra-Document-Schemas` | `main` | private | PENDING_CREATE |
 | 83 | `appolon1908/Codestra-Document-SDK` | `Codestra-Document-SDK` | `main` | private | PENDING_CREATE |
@@ -193,3 +193,8 @@ Repository-specific setup specifications are recorded in `codex-cloud/BATCH-06-S
 ## Batch 07 preparation
 
 Repository-specific setup specifications are recorded in `codex-cloud/BATCH-07-SETUP-SPECS.md`.
+
+
+## Batch 08 preparation
+
+Repository-specific setup specifications are recorded in `codex-cloud/BATCH-08-SETUP-SPECS.md`.
