@@ -80,18 +80,18 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 46 | `appolon1908/Codesrea-Social-` | `Codesrea-Social-` | `main` | private | SETUP_SPEC_READY |
 | 47 | `appolon1908/Codestra-AI` | `Codestra-AI` | `main` | private | SETUP_SPEC_READY |
 | 48 | `appolon1908/codestra-foundation` | `codestra-foundation` | `main` | private | SETUP_SPEC_READY |
-| 49 | `appolon1908/Database-migrations-` | `Database-migrations-` | `main` | private | PENDING_CREATE |
-| 50 | `appolon1908/codestra-server-c` | `codestra-server-c` | `main` | private | PENDING_CREATE |
-| 51 | `appolon1908/codestra-ruleset-toolkit` | `codestra-ruleset-toolkit` | `main` | private | PENDING_CREATE |
-| 52 | `appolon1908/Sentry` | `Sentry` | `main` | private | PENDING_CREATE |
-| 53 | `appolon1908/Wazuh` | `Wazuh` | `main` | private | PENDING_CREATE |
-| 54 | `appolon1908/Agent-Desktop-WebRTC` | `Agent-Desktop-WebRTC` | `main` | public | PENDING_CREATE |
-| 55 | `appolon1908/OpenAPI` | `OpenAPI` | `main` | public | PENDING_CREATE |
-| 56 | `appolon1908/codestra-platform` | `codestra-platform` | `main` | private | PENDING_CREATE |
-| 57 | `appolon1908/kyyow-contracts` | `kyyow-contracts` | `main` | private | PENDING_CREATE |
+| 49 | `appolon1908/Database-migrations-` | `Database-migrations-` | `main` | private | SETUP_SPEC_READY |
+| 50 | `appolon1908/codestra-server-c` | `codestra-server-c` | `main` | private | SETUP_SPEC_READY |
+| 51 | `appolon1908/codestra-ruleset-toolkit` | `codestra-ruleset-toolkit` | `main` | private | SETUP_SPEC_READY |
+| 52 | `appolon1908/Sentry` | `Sentry` | `main` | private | SETUP_SPEC_READY |
+| 53 | `appolon1908/Wazuh` | `Wazuh` | `main` | private | SETUP_SPEC_READY |
+| 54 | `appolon1908/Agent-Desktop-WebRTC` | `Agent-Desktop-WebRTC` | `main` | public | SETUP_SPEC_READY |
+| 55 | `appolon1908/OpenAPI` | `OpenAPI` | `main` | public | SETUP_SPEC_READY |
+| 56 | `appolon1908/codestra-platform` | `codestra-platform` | `main` | private | SETUP_SPEC_READY |
+| 57 | `appolon1908/kyyow-contracts` | `kyyow-contracts` | `main` | private | SETUP_SPEC_READY |
 | 58 | `appolon1908/websocket` | `websocket` | `main` | public | SETUP_SPEC_READY |
 | 59 | `appolon1908/Codestra-Mission-Control` | `Codestra-Mission-Control` | `main` | private | SETUP_SPEC_READY |
-| 60 | `appolon1908/Codestra-Device-Forge` | `Codestra-Device-Forge` | `main` | public | PENDING_CREATE |
+| 60 | `appolon1908/Codestra-Device-Forge` | `Codestra-Device-Forge` | `main` | public | SETUP_SPEC_READY |
 | 61 | `appolon1908/DJONE` | `DJONE` | `main` | public | PENDING_CREATE |
 | 62 | `appolon1908/OBS-Studio-Nabeel-` | `OBS-Studio-Nabeel-` | `main` | public | PENDING_CREATE |
 | 63 | `appolon1908/Chiaki` | `Chiaki` | `main` | public | PENDING_CREATE |
@@ -183,3 +183,8 @@ Repository-specific setup specifications are recorded in `codex-cloud/BATCH-04-S
 ## Batch 05 preparation
 
 Repository-specific setup specifications are recorded in `codex-cloud/BATCH-05-SETUP-SPECS.md`.
+
+
+## Batch 06 preparation
+
+Repository-specific setup specifications are recorded in `codex-cloud/BATCH-06-SETUP-SPECS.md`.
