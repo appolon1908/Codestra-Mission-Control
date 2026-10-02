@@ -32,16 +32,16 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 
 | # | Repository | Environment | Default branch | Visibility | Status |
 |---:|---|---|---|---|---|
-| 1 | `appolon1908/codestra` | `codestra` | `main` | private | PENDING_CREATE |
-| 2 | `appolon1908/beyvra-backend` | `beyvra-backend` | `main` | public | PENDING_CREATE |
-| 3 | `appolon1908/codestra-backend` | `codestra-backend` | `main` | private | PENDING_CREATE |
-| 4 | `appolon1908/backend2` | `backend2` | `main` | private | PENDING_CREATE |
-| 5 | `appolon1908/beyvra-frontend` | `beyvra-frontend` | `main` | public | PENDING_CREATE |
-| 6 | `appolon1908/scrapper` | `scrapper` | `main` | private | PENDING_CREATE |
-| 7 | `appolon1908/Breero.com` | `Breero.com` | `main` | public | PENDING_CREATE |
-| 8 | `appolon1908/booked4seasons` | `booked4seasons` | `main` | private | PENDING_CREATE |
-| 9 | `appolon1908/kyqra` | `kyqra` | `main` | private | PENDING_CREATE |
-| 10 | `appolon1908/telnexa` | `telnexa` | `main` | private | PENDING_CREATE |
+| 1 | `appolon1908/codestra` | `codestra` | `main` | private | SETUP_SPEC_READY |
+| 2 | `appolon1908/beyvra-backend` | `beyvra-backend` | `main` | public | SETUP_SPEC_READY |
+| 3 | `appolon1908/codestra-backend` | `codestra-backend` | `main` | private | SETUP_SPEC_READY |
+| 4 | `appolon1908/backend2` | `backend2` | `main` | private | SETUP_SPEC_READY |
+| 5 | `appolon1908/beyvra-frontend` | `beyvra-frontend` | `main` | public | SETUP_SPEC_READY |
+| 6 | `appolon1908/scrapper` | `scrapper` | `main` | private | SETUP_SPEC_READY |
+| 7 | `appolon1908/Breero.com` | `Breero.com` | `main` | public | SETUP_SPEC_READY |
+| 8 | `appolon1908/booked4seasons` | `booked4seasons` | `main` | private | SETUP_SPEC_READY |
+| 9 | `appolon1908/kyqra` | `kyqra` | `main` | private | SETUP_SPEC_READY |
+| 10 | `appolon1908/telnexa` | `telnexa` | `main` | private | SETUP_SPEC_READY |
 | 11 | `appolon1908/kyqra-crawler` | `kyqra-crawler` | `main` | private | PENDING_CREATE |
 | 12 | `appolon1908/klyrow.com` | `klyrow.com` | `main` | private | PENDING_CREATE |
 | 13 | `appolon1908/codestra-provisioning-service` | `codestra-provisioning-service` | `main` | private | SETUP_SPEC_READY |
@@ -163,3 +163,8 @@ Start with the platform/control-plane repositories first while preserving the sa
 - `Codestra-OpenBao`
 
 Then continue until all 100 repositories are published independently.
+
+
+## Batch 02 preparation
+
+Repository-specific setup specifications for `codestra`, `beyvra-backend`, `codestra-backend`, `backend2`, `beyvra-frontend`, `scrapper`, `Breero.com`, `booked4seasons`, `kyqra`, and `telnexa` are recorded in `codex-cloud/BATCH-02-SETUP-SPECS.md`.
