@@ -122,16 +122,16 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 88 | `appolon1908/Codestra-Voice-Agent` | `Codestra-Voice-Agent` | `main` | private | SETUP_SPEC_READY |
 | 89 | `appolon1908/Codestra-TTS-Piper` | `Codestra-TTS-Piper` | `main` | private | SETUP_SPEC_READY |
 | 90 | `appolon1908/Codestra-TTS-F5` | `Codestra-TTS-F5` | `main` | private | SETUP_SPEC_READY |
-| 91 | `appolon1908/Mobile-Control-Server` | `Mobile-Control-Server` | `main` | private | PENDING_CREATE |
-| 92 | `appolon1908/Mobile-Android-Agent` | `Mobile-Android-Agent` | `main` | private | PENDING_CREATE |
-| 93 | `appolon1908/Mobile-Control-Console` | `Mobile-Control-Console` | `main` | private | PENDING_CREATE |
-| 94 | `appolon1908/Mobile-Device-Gateway` | `Mobile-Device-Gateway` | `main` | private | PENDING_CREATE |
-| 95 | `appolon1908/Mobile-Sync` | `Mobile-Sync` | `main` | private | PENDING_CREATE |
-| 96 | `appolon1908/Mobile-Contracts-SDK` | `Mobile-Contracts-SDK` | `main` | private | PENDING_CREATE |
-| 97 | `appolon1908/Mobile-Control-UI` | `Mobile-Control-UI` | `main` | private | PENDING_CREATE |
-| 98 | `appolon1908/Codestra-Workstation` | `Codestra-Workstation` | `feat/windows-professional-workstation-20260926` | private | PENDING_CREATE |
-| 99 | `appolon1908/Brainbend` | `Brainbend` | `main` | public | PENDING_CREATE |
-| 100 | `appolon1908/CRM-` | `CRM-` | `main` | public | PENDING_CREATE |
+| 91 | `appolon1908/Mobile-Control-Server` | `Mobile-Control-Server` | `main` | private | SETUP_SPEC_READY |
+| 92 | `appolon1908/Mobile-Android-Agent` | `Mobile-Android-Agent` | `main` | private | SETUP_SPEC_READY |
+| 93 | `appolon1908/Mobile-Control-Console` | `Mobile-Control-Console` | `main` | private | SETUP_SPEC_READY |
+| 94 | `appolon1908/Mobile-Device-Gateway` | `Mobile-Device-Gateway` | `main` | private | SETUP_SPEC_READY |
+| 95 | `appolon1908/Mobile-Sync` | `Mobile-Sync` | `main` | private | SETUP_SPEC_READY |
+| 96 | `appolon1908/Mobile-Contracts-SDK` | `Mobile-Contracts-SDK` | `main` | private | SETUP_SPEC_READY |
+| 97 | `appolon1908/Mobile-Control-UI` | `Mobile-Control-UI` | `main` | private | SETUP_SPEC_READY |
+| 98 | `appolon1908/Codestra-Workstation` | `Codestra-Workstation` | `feat/windows-professional-workstation-20260926` | private | SETUP_SPEC_READY |
+| 99 | `appolon1908/Brainbend` | `Brainbend` | `main` | public | SETUP_SPEC_READY |
+| 100 | `appolon1908/CRM-` | `CRM-` | `main` | public | SETUP_SPEC_READY |
 
 ## Execution procedure for every row
 
@@ -203,3 +203,8 @@ Repository-specific setup specifications are recorded in `codex-cloud/BATCH-08-S
 ## Batch 09 preparation
 
 Repository-specific setup specifications are recorded in `codex-cloud/BATCH-09-SETUP-SPECS.md`.
+
+
+## Batch 10 preparation
+
+Repository-specific setup specifications are recorded in `codex-cloud/BATCH-10-SETUP-SPECS.md`.
