@@ -42,22 +42,22 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 8 | `appolon1908/booked4seasons` | `booked4seasons` | `main` | private | SETUP_SPEC_READY |
 | 9 | `appolon1908/kyqra` | `kyqra` | `main` | private | SETUP_SPEC_READY |
 | 10 | `appolon1908/telnexa` | `telnexa` | `main` | private | SETUP_SPEC_READY |
-| 11 | `appolon1908/kyqra-crawler` | `kyqra-crawler` | `main` | private | PENDING_CREATE |
-| 12 | `appolon1908/klyrow.com` | `klyrow.com` | `main` | private | PENDING_CREATE |
+| 11 | `appolon1908/kyqra-crawler` | `kyqra-crawler` | `main` | private | SETUP_SPEC_READY |
+| 12 | `appolon1908/klyrow.com` | `klyrow.com` | `main` | private | SETUP_SPEC_READY |
 | 13 | `appolon1908/codestra-provisioning-service` | `codestra-provisioning-service` | `main` | private | SETUP_SPEC_READY |
-| 14 | `appolon1908/Moneybee-frontend-` | `Moneybee-frontend-` | `main` | private | PENDING_CREATE |
-| 15 | `appolon1908/Moneybee-Backend` | `Moneybee-Backend` | `main` | private | PENDING_CREATE |
-| 16 | `appolon1908/LARIM-A-Backend` | `LARIM-A-Backend` | `main` | private | PENDING_CREATE |
-| 17 | `appolon1908/Telnexa-web` | `Telnexa-web` | `main` | private | PENDING_CREATE |
-| 18 | `appolon1908/klyrow-Website-` | `klyrow-Website-` | `main` | private | PENDING_CREATE |
+| 14 | `appolon1908/Moneybee-frontend-` | `Moneybee-frontend-` | `main` | private | SETUP_SPEC_READY |
+| 15 | `appolon1908/Moneybee-Backend` | `Moneybee-Backend` | `main` | private | SETUP_SPEC_READY |
+| 16 | `appolon1908/LARIM-A-Backend` | `LARIM-A-Backend` | `main` | private | SETUP_SPEC_READY |
+| 17 | `appolon1908/Telnexa-web` | `Telnexa-web` | `main` | private | SETUP_SPEC_READY |
+| 18 | `appolon1908/klyrow-Website-` | `klyrow-Website-` | `main` | private | SETUP_SPEC_READY |
 | 19 | `appolon1908/Odoo` | `Odoo` | `main` | public | SETUP_SPEC_READY |
 | 20 | `appolon1908/Keycloak` | `Keycloak` | `main` | public | SETUP_SPEC_READY |
 | 21 | `appolon1908/Middleware-` | `Middleware-` | `main` | public | SETUP_SPEC_READY |
 | 22 | `appolon1908/N8N` | `N8N` | `main` | private | SETUP_SPEC_READY |
-| 23 | `appolon1908/Vicidialer-Codestra` | `Vicidialer-Codestra` | `main` | private | PENDING_CREATE |
+| 23 | `appolon1908/Vicidialer-Codestra` | `Vicidialer-Codestra` | `main` | private | SETUP_SPEC_READY |
 | 24 | `appolon1908/Kong` | `Kong` | `main` | public | SETUP_SPEC_READY |
-| 25 | `appolon1908/social.codestra.co` | `social.codestra.co` | `main` | private | PENDING_CREATE |
-| 26 | `appolon1908/SDK-repository` | `SDK-repository` | `main` | private | PENDING_CREATE |
+| 25 | `appolon1908/social.codestra.co` | `social.codestra.co` | `main` | private | SETUP_SPEC_READY |
+| 26 | `appolon1908/SDK-repository` | `SDK-repository` | `main` | private | SETUP_SPEC_READY |
 | 27 | `appolon1908/Caddy` | `Caddy` | `main` | public | SETUP_SPEC_READY |
 | 28 | `appolon1908/Infustruction-repo` | `Infustruction-repo` | `main` | private | PENDING_CREATE |
 | 29 | `appolon1908/communication-platform-` | `communication-platform-` | `main` | private | PENDING_CREATE |
@@ -168,3 +168,8 @@ Then continue until all 100 repositories are published independently.
 ## Batch 02 preparation
 
 Repository-specific setup specifications for `codestra`, `beyvra-backend`, `codestra-backend`, `backend2`, `beyvra-frontend`, `scrapper`, `Breero.com`, `booked4seasons`, `kyqra`, and `telnexa` are recorded in `codex-cloud/BATCH-02-SETUP-SPECS.md`.
+
+
+## Batch 03 preparation
+
+Repository-specific setup specifications for the next ten repositories are recorded in `codex-cloud/BATCH-03-SETUP-SPECS.md`.
