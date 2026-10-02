@@ -112,16 +112,16 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 78 | `appolon1908/Codestra-PostgreSQL` | `Codestra-PostgreSQL` | `main` | private | SETUP_SPEC_READY |
 | 79 | `appolon1908/Codestra-Connect` | `Codestra-Connect` | `main` | private | SETUP_SPEC_READY |
 | 80 | `appolon1908/Codestra-Document-Intelligence` | `Codestra-Document-Intelligence` | `main` | private | SETUP_SPEC_READY |
-| 81 | `appolon1908/Codestra-OCR-Workers` | `Codestra-OCR-Workers` | `main` | private | PENDING_CREATE |
-| 82 | `appolon1908/Codestra-Document-Schemas` | `Codestra-Document-Schemas` | `main` | private | PENDING_CREATE |
-| 83 | `appolon1908/Codestra-Document-SDK` | `Codestra-Document-SDK` | `main` | private | PENDING_CREATE |
-| 84 | `appolon1908/Codestra-Document-Console` | `Codestra-Document-Console` | `main` | private | PENDING_CREATE |
-| 85 | `appolon1908/WhatsApp-Frontend` | `WhatsApp-Frontend` | `development` | public | PENDING_CREATE |
-| 86 | `appolon1908/Codestra-TTS-Kokoro` | `Codestra-TTS-Kokoro` | `main` | private | PENDING_CREATE |
-| 87 | `appolon1908/Codestra-Mixxx-Native` | `Codestra-Mixxx-Native` | `main` | private | PENDING_CREATE |
-| 88 | `appolon1908/Codestra-Voice-Agent` | `Codestra-Voice-Agent` | `main` | private | PENDING_CREATE |
-| 89 | `appolon1908/Codestra-TTS-Piper` | `Codestra-TTS-Piper` | `main` | private | PENDING_CREATE |
-| 90 | `appolon1908/Codestra-TTS-F5` | `Codestra-TTS-F5` | `main` | private | PENDING_CREATE |
+| 81 | `appolon1908/Codestra-OCR-Workers` | `Codestra-OCR-Workers` | `main` | private | SETUP_SPEC_READY |
+| 82 | `appolon1908/Codestra-Document-Schemas` | `Codestra-Document-Schemas` | `main` | private | SETUP_SPEC_READY |
+| 83 | `appolon1908/Codestra-Document-SDK` | `Codestra-Document-SDK` | `main` | private | SETUP_SPEC_READY |
+| 84 | `appolon1908/Codestra-Document-Console` | `Codestra-Document-Console` | `main` | private | SETUP_SPEC_READY |
+| 85 | `appolon1908/WhatsApp-Frontend` | `WhatsApp-Frontend` | `development` | public | SETUP_SPEC_READY |
+| 86 | `appolon1908/Codestra-TTS-Kokoro` | `Codestra-TTS-Kokoro` | `main` | private | SETUP_SPEC_READY |
+| 87 | `appolon1908/Codestra-Mixxx-Native` | `Codestra-Mixxx-Native` | `main` | private | SETUP_SPEC_READY |
+| 88 | `appolon1908/Codestra-Voice-Agent` | `Codestra-Voice-Agent` | `main` | private | SETUP_SPEC_READY |
+| 89 | `appolon1908/Codestra-TTS-Piper` | `Codestra-TTS-Piper` | `main` | private | SETUP_SPEC_READY |
+| 90 | `appolon1908/Codestra-TTS-F5` | `Codestra-TTS-F5` | `main` | private | SETUP_SPEC_READY |
 | 91 | `appolon1908/Mobile-Control-Server` | `Mobile-Control-Server` | `main` | private | PENDING_CREATE |
 | 92 | `appolon1908/Mobile-Android-Agent` | `Mobile-Android-Agent` | `main` | private | PENDING_CREATE |
 | 93 | `appolon1908/Mobile-Control-Console` | `Mobile-Control-Console` | `main` | private | PENDING_CREATE |
@@ -198,3 +198,8 @@ Repository-specific setup specifications are recorded in `codex-cloud/BATCH-07-S
 ## Batch 08 preparation
 
 Repository-specific setup specifications are recorded in `codex-cloud/BATCH-08-SETUP-SPECS.md`.
+
+
+## Batch 09 preparation
+
+Repository-specific setup specifications are recorded in `codex-cloud/BATCH-09-SETUP-SPECS.md`.
