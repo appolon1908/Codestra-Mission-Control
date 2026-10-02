@@ -59,16 +59,16 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 25 | `appolon1908/social.codestra.co` | `social.codestra.co` | `main` | private | SETUP_SPEC_READY |
 | 26 | `appolon1908/SDK-repository` | `SDK-repository` | `main` | private | SETUP_SPEC_READY |
 | 27 | `appolon1908/Caddy` | `Caddy` | `main` | public | SETUP_SPEC_READY |
-| 28 | `appolon1908/Infustruction-repo` | `Infustruction-repo` | `main` | private | PENDING_CREATE |
-| 29 | `appolon1908/communication-platform-` | `communication-platform-` | `main` | private | PENDING_CREATE |
-| 30 | `appolon1908/Codestra-Grafana-` | `Codestra-Grafana-` | `main` | private | PENDING_CREATE |
-| 31 | `appolon1908/Codestra-Prometheus` | `Codestra-Prometheus` | `main` | private | PENDING_CREATE |
-| 32 | `appolon1908/Codestra-Alertmanager` | `Codestra-Alertmanager` | `main` | private | PENDING_CREATE |
-| 33 | `appolon1908/Codestra-Loki` | `Codestra-Loki` | `main` | private | PENDING_CREATE |
-| 34 | `appolon1908/Codestra-Telemetry` | `Codestra-Telemetry` | `main` | private | PENDING_CREATE |
-| 35 | `appolon1908/Codestra-Tempo` | `Codestra-Tempo` | `main` | private | PENDING_CREATE |
-| 36 | `appolon1908/Superset` | `Superset` | `main` | private | PENDING_CREATE |
-| 37 | `appolon1908/Codestra-Node-Exporter` | `Codestra-Node-Exporter` | `main` | private | PENDING_CREATE |
+| 28 | `appolon1908/Infustruction-repo` | `Infustruction-repo` | `main` | private | SETUP_SPEC_READY |
+| 29 | `appolon1908/communication-platform-` | `communication-platform-` | `main` | private | SETUP_SPEC_READY |
+| 30 | `appolon1908/Codestra-Grafana-` | `Codestra-Grafana-` | `main` | private | SETUP_SPEC_READY |
+| 31 | `appolon1908/Codestra-Prometheus` | `Codestra-Prometheus` | `main` | private | SETUP_SPEC_READY |
+| 32 | `appolon1908/Codestra-Alertmanager` | `Codestra-Alertmanager` | `main` | private | SETUP_SPEC_READY |
+| 33 | `appolon1908/Codestra-Loki` | `Codestra-Loki` | `main` | private | SETUP_SPEC_READY |
+| 34 | `appolon1908/Codestra-Telemetry` | `Codestra-Telemetry` | `main` | private | SETUP_SPEC_READY |
+| 35 | `appolon1908/Codestra-Tempo` | `Codestra-Tempo` | `main` | private | SETUP_SPEC_READY |
+| 36 | `appolon1908/Superset` | `Superset` | `main` | private | SETUP_SPEC_READY |
+| 37 | `appolon1908/Codestra-Node-Exporter` | `Codestra-Node-Exporter` | `main` | private | SETUP_SPEC_READY |
 | 38 | `appolon1908/Codestra-cAdvisor` | `Codestra-cAdvisor` | `main` | private | PENDING_CREATE |
 | 39 | `appolon1908/Codestra-Redis-Exporter` | `Codestra-Redis-Exporter` | `main` | private | PENDING_CREATE |
 | 40 | `appolon1908/Codestra-Blackbox-Exporter` | `Codestra-Blackbox-Exporter` | `main` | private | PENDING_CREATE |
@@ -173,3 +173,8 @@ Repository-specific setup specifications for `codestra`, `beyvra-backend`, `code
 ## Batch 03 preparation
 
 Repository-specific setup specifications for the next ten repositories are recorded in `codex-cloud/BATCH-03-SETUP-SPECS.md`.
+
+
+## Batch 04 preparation
+
+Repository-specific setup specifications are recorded in `codex-cloud/BATCH-04-SETUP-SPECS.md`.
