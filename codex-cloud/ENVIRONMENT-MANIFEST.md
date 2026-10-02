@@ -21,6 +21,7 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 ## Status legend
 
 - `PENDING_CREATE`: environment has not been created yet.
+- `SETUP_SPEC_READY`: repository-specific environment setup/verification instructions are prepared; the Codex Cloud UI object is not yet created.
 - `SETTING_UP`: Codex is inspecting/installing/testing.
 - `BLOCKED`: user input, credentials, permissions, or repository repair is required.
 - `READY_TO_PUBLISH`: setup passed and is awaiting Publish.
@@ -43,21 +44,21 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 10 | `appolon1908/telnexa` | `telnexa` | `main` | private | PENDING_CREATE |
 | 11 | `appolon1908/kyqra-crawler` | `kyqra-crawler` | `main` | private | PENDING_CREATE |
 | 12 | `appolon1908/klyrow.com` | `klyrow.com` | `main` | private | PENDING_CREATE |
-| 13 | `appolon1908/codestra-provisioning-service` | `codestra-provisioning-service` | `main` | private | PENDING_CREATE |
+| 13 | `appolon1908/codestra-provisioning-service` | `codestra-provisioning-service` | `main` | private | SETUP_SPEC_READY |
 | 14 | `appolon1908/Moneybee-frontend-` | `Moneybee-frontend-` | `main` | private | PENDING_CREATE |
 | 15 | `appolon1908/Moneybee-Backend` | `Moneybee-Backend` | `main` | private | PENDING_CREATE |
 | 16 | `appolon1908/LARIM-A-Backend` | `LARIM-A-Backend` | `main` | private | PENDING_CREATE |
 | 17 | `appolon1908/Telnexa-web` | `Telnexa-web` | `main` | private | PENDING_CREATE |
 | 18 | `appolon1908/klyrow-Website-` | `klyrow-Website-` | `main` | private | PENDING_CREATE |
-| 19 | `appolon1908/Odoo` | `Odoo` | `main` | public | PENDING_CREATE |
-| 20 | `appolon1908/Keycloak` | `Keycloak` | `main` | public | PENDING_CREATE |
-| 21 | `appolon1908/Middleware-` | `Middleware-` | `main` | public | PENDING_CREATE |
-| 22 | `appolon1908/N8N` | `N8N` | `main` | private | PENDING_CREATE |
+| 19 | `appolon1908/Odoo` | `Odoo` | `main` | public | SETUP_SPEC_READY |
+| 20 | `appolon1908/Keycloak` | `Keycloak` | `main` | public | SETUP_SPEC_READY |
+| 21 | `appolon1908/Middleware-` | `Middleware-` | `main` | public | SETUP_SPEC_READY |
+| 22 | `appolon1908/N8N` | `N8N` | `main` | private | SETUP_SPEC_READY |
 | 23 | `appolon1908/Vicidialer-Codestra` | `Vicidialer-Codestra` | `main` | private | PENDING_CREATE |
-| 24 | `appolon1908/Kong` | `Kong` | `main` | public | PENDING_CREATE |
+| 24 | `appolon1908/Kong` | `Kong` | `main` | public | SETUP_SPEC_READY |
 | 25 | `appolon1908/social.codestra.co` | `social.codestra.co` | `main` | private | PENDING_CREATE |
 | 26 | `appolon1908/SDK-repository` | `SDK-repository` | `main` | private | PENDING_CREATE |
-| 27 | `appolon1908/Caddy` | `Caddy` | `main` | public | PENDING_CREATE |
+| 27 | `appolon1908/Caddy` | `Caddy` | `main` | public | SETUP_SPEC_READY |
 | 28 | `appolon1908/Infustruction-repo` | `Infustruction-repo` | `main` | private | PENDING_CREATE |
 | 29 | `appolon1908/communication-platform-` | `communication-platform-` | `main` | private | PENDING_CREATE |
 | 30 | `appolon1908/Codestra-Grafana-` | `Codestra-Grafana-` | `main` | private | PENDING_CREATE |
@@ -72,7 +73,7 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 39 | `appolon1908/Codestra-Redis-Exporter` | `Codestra-Redis-Exporter` | `main` | private | PENDING_CREATE |
 | 40 | `appolon1908/Codestra-Blackbox-Exporter` | `Codestra-Blackbox-Exporter` | `main` | private | PENDING_CREATE |
 | 41 | `appolon1908/Codestra-Alloy` | `Codestra-Alloy` | `main` | private | PENDING_CREATE |
-| 42 | `appolon1908/Codestra-OpenBao` | `Codestra-OpenBao` | `main` | private | PENDING_CREATE |
+| 42 | `appolon1908/Codestra-OpenBao` | `Codestra-OpenBao` | `main` | private | SETUP_SPEC_READY |
 | 43 | `appolon1908/Codestra-Postgres-Exporter` | `Codestra-Postgres-Exporter` | `main` | private | PENDING_CREATE |
 | 44 | `appolon1908/Codestra-Marketing-` | `Codestra-Marketing-` | `main` | private | PENDING_CREATE |
 | 45 | `appolon1908/Codestra-Communication-CC` | `Codestra-Communication-CC` | `main` | private | PENDING_CREATE |
@@ -88,8 +89,8 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 55 | `appolon1908/OpenAPI` | `OpenAPI` | `main` | public | PENDING_CREATE |
 | 56 | `appolon1908/codestra-platform` | `codestra-platform` | `main` | private | PENDING_CREATE |
 | 57 | `appolon1908/kyyow-contracts` | `kyyow-contracts` | `main` | private | PENDING_CREATE |
-| 58 | `appolon1908/websocket` | `websocket` | `main` | public | PENDING_CREATE |
-| 59 | `appolon1908/Codestra-Mission-Control` | `Codestra-Mission-Control` | `main` | private | PENDING_CREATE |
+| 58 | `appolon1908/websocket` | `websocket` | `main` | public | SETUP_SPEC_READY |
+| 59 | `appolon1908/Codestra-Mission-Control` | `Codestra-Mission-Control` | `main` | private | SETUP_SPEC_READY |
 | 60 | `appolon1908/Codestra-Device-Forge` | `Codestra-Device-Forge` | `main` | public | PENDING_CREATE |
 | 61 | `appolon1908/DJONE` | `DJONE` | `main` | public | PENDING_CREATE |
 | 62 | `appolon1908/OBS-Studio-Nabeel-` | `OBS-Studio-Nabeel-` | `main` | public | PENDING_CREATE |
@@ -145,6 +146,8 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 9. Update that row to `PUBLISHED` or `VERIFIED` with any blocker note.
 
 ## Current batch
+
+Batch 01 repository-specific setup specifications are now recorded in `codex-cloud/BATCH-01-SETUP-SPECS.md`. The Codex Cloud UI objects still require Create environment -> Get started -> Publish.
 
 Start with the platform/control-plane repositories first while preserving the same one-repo/one-environment rule:
 
