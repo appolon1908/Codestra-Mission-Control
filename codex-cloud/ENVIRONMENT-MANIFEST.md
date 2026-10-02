@@ -69,17 +69,17 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 35 | `appolon1908/Codestra-Tempo` | `Codestra-Tempo` | `main` | private | SETUP_SPEC_READY |
 | 36 | `appolon1908/Superset` | `Superset` | `main` | private | SETUP_SPEC_READY |
 | 37 | `appolon1908/Codestra-Node-Exporter` | `Codestra-Node-Exporter` | `main` | private | SETUP_SPEC_READY |
-| 38 | `appolon1908/Codestra-cAdvisor` | `Codestra-cAdvisor` | `main` | private | PENDING_CREATE |
-| 39 | `appolon1908/Codestra-Redis-Exporter` | `Codestra-Redis-Exporter` | `main` | private | PENDING_CREATE |
-| 40 | `appolon1908/Codestra-Blackbox-Exporter` | `Codestra-Blackbox-Exporter` | `main` | private | PENDING_CREATE |
-| 41 | `appolon1908/Codestra-Alloy` | `Codestra-Alloy` | `main` | private | PENDING_CREATE |
+| 38 | `appolon1908/Codestra-cAdvisor` | `Codestra-cAdvisor` | `main` | private | SETUP_SPEC_READY |
+| 39 | `appolon1908/Codestra-Redis-Exporter` | `Codestra-Redis-Exporter` | `main` | private | SETUP_SPEC_READY |
+| 40 | `appolon1908/Codestra-Blackbox-Exporter` | `Codestra-Blackbox-Exporter` | `main` | private | SETUP_SPEC_READY |
+| 41 | `appolon1908/Codestra-Alloy` | `Codestra-Alloy` | `main` | private | SETUP_SPEC_READY |
 | 42 | `appolon1908/Codestra-OpenBao` | `Codestra-OpenBao` | `main` | private | SETUP_SPEC_READY |
-| 43 | `appolon1908/Codestra-Postgres-Exporter` | `Codestra-Postgres-Exporter` | `main` | private | PENDING_CREATE |
-| 44 | `appolon1908/Codestra-Marketing-` | `Codestra-Marketing-` | `main` | private | PENDING_CREATE |
-| 45 | `appolon1908/Codestra-Communication-CC` | `Codestra-Communication-CC` | `main` | private | PENDING_CREATE |
-| 46 | `appolon1908/Codesrea-Social-` | `Codesrea-Social-` | `main` | private | PENDING_CREATE |
-| 47 | `appolon1908/Codestra-AI` | `Codestra-AI` | `main` | private | PENDING_CREATE |
-| 48 | `appolon1908/codestra-foundation` | `codestra-foundation` | `main` | private | PENDING_CREATE |
+| 43 | `appolon1908/Codestra-Postgres-Exporter` | `Codestra-Postgres-Exporter` | `main` | private | SETUP_SPEC_READY |
+| 44 | `appolon1908/Codestra-Marketing-` | `Codestra-Marketing-` | `main` | private | SETUP_SPEC_READY |
+| 45 | `appolon1908/Codestra-Communication-CC` | `Codestra-Communication-CC` | `main` | private | SETUP_SPEC_READY |
+| 46 | `appolon1908/Codesrea-Social-` | `Codesrea-Social-` | `main` | private | SETUP_SPEC_READY |
+| 47 | `appolon1908/Codestra-AI` | `Codestra-AI` | `main` | private | SETUP_SPEC_READY |
+| 48 | `appolon1908/codestra-foundation` | `codestra-foundation` | `main` | private | SETUP_SPEC_READY |
 | 49 | `appolon1908/Database-migrations-` | `Database-migrations-` | `main` | private | PENDING_CREATE |
 | 50 | `appolon1908/codestra-server-c` | `codestra-server-c` | `main` | private | PENDING_CREATE |
 | 51 | `appolon1908/codestra-ruleset-toolkit` | `codestra-ruleset-toolkit` | `main` | private | PENDING_CREATE |
@@ -178,3 +178,8 @@ Repository-specific setup specifications for the next ten repositories are recor
 ## Batch 04 preparation
 
 Repository-specific setup specifications are recorded in `codex-cloud/BATCH-04-SETUP-SPECS.md`.
+
+
+## Batch 05 preparation
+
+Repository-specific setup specifications are recorded in `codex-cloud/BATCH-05-SETUP-SPECS.md`.
