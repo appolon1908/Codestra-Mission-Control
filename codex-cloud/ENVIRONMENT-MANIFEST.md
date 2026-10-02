@@ -92,16 +92,16 @@ Target: **1 repository = 1 separate Codex Cloud environment**
 | 58 | `appolon1908/websocket` | `websocket` | `main` | public | SETUP_SPEC_READY |
 | 59 | `appolon1908/Codestra-Mission-Control` | `Codestra-Mission-Control` | `main` | private | SETUP_SPEC_READY |
 | 60 | `appolon1908/Codestra-Device-Forge` | `Codestra-Device-Forge` | `main` | public | SETUP_SPEC_READY |
-| 61 | `appolon1908/DJONE` | `DJONE` | `main` | public | PENDING_CREATE |
-| 62 | `appolon1908/OBS-Studio-Nabeel-` | `OBS-Studio-Nabeel-` | `main` | public | PENDING_CREATE |
-| 63 | `appolon1908/Chiaki` | `Chiaki` | `main` | public | PENDING_CREATE |
-| 64 | `appolon1908/MediaMTX` | `MediaMTX` | `main` | public | PENDING_CREATE |
-| 65 | `appolon1908/Owncast-Nabeel` | `Owncast-Nabeel` | `main` | public | PENDING_CREATE |
-| 66 | `appolon1908/Meltano` | `Meltano` | `main` | public | PENDING_CREATE |
-| 67 | `appolon1908/Codestra-Lead-importer-api` | `Codestra-Lead-importer-api` | `main` | private | PENDING_CREATE |
-| 68 | `appolon1908/openrerefine-` | `openrerefine-` | `main` | public | PENDING_CREATE |
-| 69 | `appolon1908/Leads-Workstation` | `Leads-Workstation` | `main` | private | PENDING_CREATE |
-| 70 | `appolon1908/Meltano-Leads-Importer` | `Meltano-Leads-Importer` | `main` | private | PENDING_CREATE |
+| 61 | `appolon1908/DJONE` | `DJONE` | `main` | public | SETUP_SPEC_READY |
+| 62 | `appolon1908/OBS-Studio-Nabeel-` | `OBS-Studio-Nabeel-` | `main` | public | SETUP_SPEC_READY |
+| 63 | `appolon1908/Chiaki` | `Chiaki` | `main` | public | SETUP_SPEC_READY |
+| 64 | `appolon1908/MediaMTX` | `MediaMTX` | `main` | public | SETUP_SPEC_READY |
+| 65 | `appolon1908/Owncast-Nabeel` | `Owncast-Nabeel` | `main` | public | SETUP_SPEC_READY |
+| 66 | `appolon1908/Meltano` | `Meltano` | `main` | public | SETUP_SPEC_READY |
+| 67 | `appolon1908/Codestra-Lead-importer-api` | `Codestra-Lead-importer-api` | `main` | private | SETUP_SPEC_READY |
+| 68 | `appolon1908/openrerefine-` | `openrerefine-` | `main` | public | SETUP_SPEC_READY |
+| 69 | `appolon1908/Leads-Workstation` | `Leads-Workstation` | `main` | private | SETUP_SPEC_READY |
+| 70 | `appolon1908/Meltano-Leads-Importer` | `Meltano-Leads-Importer` | `main` | private | SETUP_SPEC_READY |
 | 71 | `appolon1908/FACE-ID` | `FACE-ID` | `main` | public | PENDING_CREATE |
 | 72 | `appolon1908/InsightFace` | `InsightFace` | `main` | public | PENDING_CREATE |
 | 73 | `appolon1908/WhatsApp` | `WhatsApp` | `main` | public | PENDING_CREATE |
@@ -188,3 +188,8 @@ Repository-specific setup specifications are recorded in `codex-cloud/BATCH-05-S
 ## Batch 06 preparation
 
 Repository-specific setup specifications are recorded in `codex-cloud/BATCH-06-SETUP-SPECS.md`.
+
+
+## Batch 07 preparation
+
+Repository-specific setup specifications are recorded in `codex-cloud/BATCH-07-SETUP-SPECS.md`.
