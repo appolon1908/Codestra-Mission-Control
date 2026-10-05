@@ -154,7 +154,7 @@ def archive_target(
         return None
     if item.path.drive.casefold() != "c:":
         return None
-    stamp = datetime.fromtimestamp(item.mtime)
+    stamp = datetime.fromtimestamp(item.mtime, tz=timezone.utc)
     return archive_root / f"{stamp.year:04d}" / f"{stamp.month:02d}" / item.path.name
 
 
