@@ -45,10 +45,21 @@ class MissionRouterAPI:
                 parsed = urlparse(self.path)
                 query = parse_qs(parsed.query)
                 if parsed.path == "/healthz":
-
-                    try: sha=subprocess.check_output(["git","rev-parse","HEAD"],cwd=os.getcwd(),text=True).strip()
-                    except (OSError,subprocess.SubprocessError): sha="0"*40
-                    return self._json(200, {"status":"OK","service_name":"mission-router","active_sha":sha,"uptime_seconds":round(time.monotonic()-started,3)})
+                    try:
+                        sha = subprocess.check_output(
+                            ["git", "rev-parse", "HEAD"], cwd=os.getcwd(), text=True
+                        ).strip()
+                    except (OSError, subprocess.SubprocessError):
+                        sha = "0" * 40
+                    return self._json(
+                        200,
+                        {
+                            "status": "OK",
+                            "service_name": "mission-router",
+                            "active_sha": sha,
+                            "uptime_seconds": round(time.monotonic() - started, 3),
+                        },
+                    )
                 if parsed.path == f"{PREFIX}/snapshot":
                     if not self._authorized("mission:read"):
                         return
@@ -67,11 +78,21 @@ class MissionRouterAPI:
                     if not agent:
                         return self._json(404, {"error": "agent_not_registered"})
                     tasks = api.store.tasks(repo)
-                    completed = {t.task_id for t in tasks if t.certified or t.completion_percent >= 100}
+                    completed = {
+                        t.task_id for t in tasks if t.certified or t.completion_percent >= 100
+                    }
                     ranked = api.router.rank(tasks, agent, completed=completed)
-                    return self._json(200, {"agent_id": agent_id, "repository": repo,
-                        "next": [{"task_id": r.task.task_id, "score": r.score, "reasons": r.reasons}
-                                 for r in ranked[:10]]})
+                    return self._json(
+                        200,
+                        {
+                            "agent_id": agent_id,
+                            "repository": repo,
+                            "next": [
+                                {"task_id": r.task.task_id, "score": r.score, "reasons": r.reasons}
+                                for r in ranked[:10]
+                            ],
+                        },
+                    )
                 return self._json(404, {"error": "not_found"})
 
             def log_message(self, format: str, *args: object) -> None:

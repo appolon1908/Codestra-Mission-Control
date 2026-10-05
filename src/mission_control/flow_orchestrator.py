@@ -22,15 +22,31 @@ class FlowOrchestrator:
     def __init__(self, flow: ContinuousFlow | None = None) -> None:
         self.flow = flow or ContinuousFlow()
 
-    def on_checkpoint(self, *, task_id: str, lane: AgentLane, implementation_done: bool = False,
-                      review_done: bool = False, testing_done: bool = False,
-                      certified: bool = False, safe_remediations: tuple[str, ...] = (),
-                      production_effect: bool = False, destructive_change: bool = False) -> Handoff:
-        decision = self.flow.decide(FlowContext(
-            lane=lane.value, implementation_done=implementation_done, review_done=review_done,
-            testing_done=testing_done, certified=certified, safe_remediations=safe_remediations,
-            production_effect=production_effect, destructive_change=destructive_change,
-        ))
+    def on_checkpoint(
+        self,
+        *,
+        task_id: str,
+        lane: AgentLane,
+        implementation_done: bool = False,
+        review_done: bool = False,
+        testing_done: bool = False,
+        certified: bool = False,
+        safe_remediations: tuple[str, ...] = (),
+        production_effect: bool = False,
+        destructive_change: bool = False,
+    ) -> Handoff:
+        decision = self.flow.decide(
+            FlowContext(
+                lane=lane.value,
+                implementation_done=implementation_done,
+                review_done=review_done,
+                testing_done=testing_done,
+                certified=certified,
+                safe_remediations=safe_remediations,
+                production_effect=production_effect,
+                destructive_change=destructive_change,
+            )
+        )
         to_lane = None
         release = False
         request_next = False
@@ -38,9 +54,7 @@ class FlowOrchestrator:
             to_lane, release, request_next = AgentLane.REVIEW, True, True
         elif decision.action is FlowAction.HANDOFF_TESTING:
             to_lane, release, request_next = AgentLane.TESTING, True, True
-        elif decision.action is FlowAction.CERTIFICATION:
-            release, request_next = True, True
-        elif decision.action is FlowAction.NEXT_TASK:
+        elif decision.action is FlowAction.CERTIFICATION or decision.action is FlowAction.NEXT_TASK:
             release, request_next = True, True
         return Handoff(task_id, lane, to_lane, release, request_next, decision.action)
 

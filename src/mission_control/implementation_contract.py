@@ -29,9 +29,7 @@ def tests_passed(tests: dict[str, Any]) -> bool:
         return True
     total = tests.get("total")
     failed = tests.get("failed")
-    if isinstance(total, int) and total > 0 and failed == 0:
-        return True
-    return False
+    return isinstance(total, int) and total > 0 and failed == 0
 
 
 def evaluate_implementation_proof(
@@ -64,14 +62,9 @@ def evaluate_implementation_proof(
 
     shas = [local_commit_sha, pushed_branch_sha, pr_head_sha]
     present_shas = [sha for sha in shas if sha]
-    push_proven = (
-        len(present_shas) == 3
-        and len(set(present_shas)) == 1
-    )
+    push_proven = len(present_shas) == 3 and len(set(present_shas)) == 1
     if len(present_shas) == 3 and not push_proven:
-        reasons.append(
-            "delivery SHA mismatch: local commit, pushed branch and PR head must match"
-        )
+        reasons.append("delivery SHA mismatch: local commit, pushed branch and PR head must match")
 
     eligible_for_review = not reasons and push_proven
     return ImplementationProofDecision(

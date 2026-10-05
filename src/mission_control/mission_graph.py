@@ -1,8 +1,12 @@
 from __future__ import annotations
+
 import json
 
+
 class MissionGraphStore:
-    def __init__(self,store): self.store=store
+    def __init__(self, store):
+        self.store = store
+
     def initialize(self):
         with self.store.connection() as c:
             c.executescript("""
@@ -25,18 +29,37 @@ class MissionGraphStore:
               area_id TEXT,subarea_id TEXT,feature_id TEXT,api_contract TEXT,
               PRIMARY KEY(repository,pr_number,task_id));
             """)
-    def add_node(self,node_id,repository,node_type,title,parent_id=None,sequence=0,metadata=None):
+
+    def add_node(
+        self, node_id, repository, node_type, title, parent_id=None, sequence=0, metadata=None
+    ):
         with self.store.connection() as c:
-            c.execute("""INSERT INTO mission_graph_nodes VALUES(?,?,?,?,?,?,?)
+            c.execute(
+                """INSERT INTO mission_graph_nodes VALUES(?,?,?,?,?,?,?)
             ON CONFLICT(node_id) DO UPDATE SET parent_id=excluded.parent_id,title=excluded.title,
             sequence=excluded.sequence,metadata_json=excluded.metadata_json""",
-            (node_id,repository,node_type,parent_id,title,sequence,json.dumps(metadata or {},sort_keys=True)))
-    def add_edge(self,source,target,edge_type="DEPENDS_ON"):
+                (
+                    node_id,
+                    repository,
+                    node_type,
+                    parent_id,
+                    title,
+                    sequence,
+                    json.dumps(metadata or {}, sort_keys=True),
+                ),
+            )
+
+    def add_edge(self, source, target, edge_type="DEPENDS_ON"):
         with self.store.connection() as c:
-            c.execute("INSERT OR IGNORE INTO mission_graph_edges VALUES(?,?,?)",(source,target,edge_type))
-    def upsert_pr(self,repository,number,head_sha,base_sha,branch,state,**kwargs):
+            c.execute(
+                "INSERT OR IGNORE INTO mission_graph_edges VALUES(?,?,?)",
+                (source, target, edge_type),
+            )
+
+    def upsert_pr(self, repository, number, head_sha, base_sha, branch, state, **kwargs):
         with self.store.connection() as c:
-            c.execute("""INSERT INTO pull_requests(repository,pr_number,head_sha,base_sha,branch,state,
+            c.execute(
+                """INSERT INTO pull_requests(repository,pr_number,head_sha,base_sha,branch,state,
             implementation_agent,review_agent,test_agent,ci_state,merge_state,post_merge_verified)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(repository,pr_number) DO UPDATE SET head_sha=excluded.head_sha,base_sha=excluded.base_sha,
@@ -44,15 +67,46 @@ class MissionGraphStore:
             review_agent=excluded.review_agent,test_agent=excluded.test_agent,ci_state=excluded.ci_state,
             merge_state=excluded.merge_state,post_merge_verified=excluded.post_merge_verified,
             updated_at=CURRENT_TIMESTAMP""",
-            (repository,number,head_sha,base_sha,branch,state,kwargs.get("implementation_agent"),
-             kwargs.get("review_agent"),kwargs.get("test_agent"),kwargs.get("ci_state","UNKNOWN"),
-             kwargs.get("merge_state","UNMERGED"),int(kwargs.get("post_merge_verified",False))))
-    def bind_pr_task(self,repository,number,task_id,area_id=None,subarea_id=None,feature_id=None,api_contract=None):
+                (
+                    repository,
+                    number,
+                    head_sha,
+                    base_sha,
+                    branch,
+                    state,
+                    kwargs.get("implementation_agent"),
+                    kwargs.get("review_agent"),
+                    kwargs.get("test_agent"),
+                    kwargs.get("ci_state", "UNKNOWN"),
+                    kwargs.get("merge_state", "UNMERGED"),
+                    int(kwargs.get("post_merge_verified", False)),
+                ),
+            )
+
+    def bind_pr_task(
+        self,
+        repository,
+        number,
+        task_id,
+        area_id=None,
+        subarea_id=None,
+        feature_id=None,
+        api_contract=None,
+    ):
         with self.store.connection() as c:
-            c.execute("INSERT OR REPLACE INTO pr_task_bindings VALUES(?,?,?,?,?,?,?)",
-                      (repository,number,task_id,area_id,subarea_id,feature_id,api_contract))
-    def task_prs(self,task_id):
+            c.execute(
+                "INSERT OR REPLACE INTO pr_task_bindings VALUES(?,?,?,?,?,?,?)",
+                (repository, number, task_id, area_id, subarea_id, feature_id, api_contract),
+            )
+
+    def task_prs(self, task_id):
         with self.store.connection() as c:
-            return [dict(r) for r in c.execute("""SELECT p.*,b.area_id,b.subarea_id,b.feature_id,b.api_contract
+            return [
+                dict(r)
+                for r in c.execute(
+                    """SELECT p.*,b.area_id,b.subarea_id,b.feature_id,b.api_contract
             FROM pull_requests p JOIN pr_task_bindings b USING(repository,pr_number)
-            WHERE b.task_id=? ORDER BY p.pr_number""",(task_id,)).fetchall()]
+            WHERE b.task_id=? ORDER BY p.pr_number""",
+                    (task_id,),
+                ).fetchall()
+            ]

@@ -166,9 +166,7 @@ class MissionScheduler:
                 raise RuntimeError("dirty expired worktree requires decision")
             checkpoint = self.store.latest_checkpoint(mission["mission_id"])
             checkpoint_head = (
-                checkpoint["head_sha"]
-                if checkpoint and checkpoint["head_sha"]
-                else state.head_sha
+                checkpoint["head_sha"] if checkpoint and checkpoint["head_sha"] else state.head_sha
             )
             assignment = self.git.takeover(
                 local_path,
@@ -333,9 +331,7 @@ class MissionScheduler:
                 reminders.append(f"{mission['mission_id']}: {status.value}")
             lease = self.leases.current(mission["mission_id"])
             if lease and datetime.fromisoformat(lease["expires_at"]) <= now:
-                reminders.append(
-                    f"{mission['mission_id']}: expired writer {lease['agent_id']}"
-                )
+                reminders.append(f"{mission['mission_id']}: expired writer {lease['agent_id']}")
         return sorted(set(reminders))
 
     def daily_report(self) -> dict:

@@ -58,9 +58,7 @@ def test_activity_detects_expired_writer_for_takeover(tmp_path):
             ),
         )
 
-    decision = asyncio.run(
-        MissionActivities(db).evaluate_mission("PAS-183")
-    )
+    decision = asyncio.run(MissionActivities(db).evaluate_mission("PAS-183"))
     assert decision["action"] == "REASSIGN"
     assert "expired" in decision["reason"]
 
@@ -121,9 +119,7 @@ def test_proven_review_state_requests_successor_implementation(tmp_path):
     activities = MissionActivities(db)
     decision = asyncio.run(activities.evaluate_mission("PAS-184B"))
     assert decision["action"] == "NEXT_IMPLEMENTATION"
-    result = asyncio.run(
-        activities.request_successor_implementation("PAS-184B")
-    )
+    result = asyncio.run(activities.request_successor_implementation("PAS-184B"))
     assert result["status"] == "SUCCESSOR_IMPLEMENTATION_REQUESTED"
     event_types = [row["event_type"] for row in store.events("PAS-184B")]
     assert "SUCCESSOR_IMPLEMENTATION_REQUESTED" in event_types

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -83,7 +82,9 @@ def main() -> None:
     claim = sub.add_parser("claim")
     claim.add_argument("--mission", required=True)
     claim.add_argument("--agent", required=True)
-    claim.add_argument("--role", choices=[r.value for r in AgentRole], default=AgentRole.WRITER.value)
+    claim.add_argument(
+        "--role", choices=[r.value for r in AgentRole], default=AgentRole.WRITER.value
+    )
     claim.add_argument("--ttl", type=int, default=600)
 
     heartbeat = sub.add_parser("heartbeat")
@@ -132,9 +133,7 @@ def main() -> None:
     evidence.add_argument("--role", choices=[r.value for r in EvidenceRole], required=True)
     evidence.add_argument("--head-sha", required=True)
     evidence.add_argument("--actor", required=True)
-    evidence.add_argument(
-        "--verdict", choices=[v.value for v in EvidenceVerdict], required=True
-    )
+    evidence.add_argument("--verdict", choices=[v.value for v in EvidenceVerdict], required=True)
     evidence.add_argument("--blocker", action="append", default=[])
 
     dependency = sub.add_parser("add-dependency")
@@ -142,9 +141,7 @@ def main() -> None:
     dependency.add_argument("--depends-on", required=True)
 
     classify = sub.add_parser("classify-conflicts")
-    classify.add_argument(
-        "--mergeable", choices=["true", "false", "unknown"], required=True
-    )
+    classify.add_argument("--mergeable", choices=["true", "false", "unknown"], required=True)
     classify.add_argument("--path", action="append", default=[])
     classify.add_argument("--cross-repo", action="store_true")
 
@@ -245,9 +242,7 @@ def main() -> None:
         choices=[lane.value for lane in WorkerLane],
         default=[],
     )
-    node_probe.add_argument(
-        "--provider", action="append", choices=["claude", "codex"], default=[]
-    )
+    node_probe.add_argument("--provider", action="append", choices=["claude", "codex"], default=[])
     node_probe.add_argument("--worktree-root", required=True)
     node_probe.add_argument("--tailnet-dns")
     node_probe.add_argument("--max-parallel", type=int, default=3)
@@ -392,8 +387,11 @@ def main() -> None:
         store.add_dependency(args.mission, args.depends_on)
         print(
             json.dumps(
-                {"ok": True, "mission": args.mission,
-                 "dependencies": store.dependencies(args.mission)}
+                {
+                    "ok": True,
+                    "mission": args.mission,
+                    "dependencies": store.dependencies(args.mission),
+                }
             )
         )
         return
@@ -520,9 +518,7 @@ def main() -> None:
                 {
                     "count": len(rows),
                     "proven": sum(row["state"] == "PROVEN" for row in rows),
-                    "needs_rework": sum(
-                        row["state"] == "NEEDS_REWORK" for row in rows
-                    ),
+                    "needs_rework": sum(row["state"] == "NEEDS_REWORK" for row in rows),
                     "executions": rows,
                 },
                 sort_keys=True,
@@ -601,8 +597,7 @@ def main() -> None:
             raise SystemExit(f"mission not found: {args.mission}")
         if not leases.is_owner(args.mission, args.agent):
             raise SystemExit(
-                f"ownership refused: {args.agent} does not hold the writer lease "
-                f"for {args.mission}"
+                f"ownership refused: {args.agent} does not hold the writer lease for {args.mission}"
             )
         observed_at = datetime.fromisoformat(args.observed_at) if args.observed_at else None
         if observed_at is not None and observed_at.tzinfo is None:
