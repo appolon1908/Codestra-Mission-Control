@@ -225,8 +225,14 @@ def test_mission_branch_binding(store):
 def test_dirty_checkpoint_blocks(store):
     coordinator = prepare_merge(store, MISSION)
     store.record_checkpoint(
-        MISSION, "builder-1", "WIP", head_sha=HEAD_A, dirty_count=3, tests={},
-        blockers=[], next_task_requested=False,
+        MISSION,
+        "builder-1",
+        "WIP",
+        head_sha=HEAD_A,
+        dirty_count=3,
+        tests={},
+        blockers=[],
+        next_task_requested=False,
     )
     assert coordinator.evaluate(MISSION, clean_snapshot()).reasons == ("CHECKPOINT_DIRTY",)
 

@@ -1,4 +1,3 @@
-
 from mission_control.models import ApprovalLevel, Mission
 from mission_control.policy import ApprovalPolicy
 from mission_control.store import MissionStore

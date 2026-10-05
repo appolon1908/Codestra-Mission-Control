@@ -102,9 +102,7 @@ class MergeCoordinatorAPI:
                     self._mission_not_found(mission_id)
                     return
                 if decision is None:
-                    self._json(
-                        404, {"error": "decision_not_found", "mission_id": mission_id}
-                    )
+                    self._json(404, {"error": "decision_not_found", "mission_id": mission_id})
                     return
                 self._json(200, decision)
 

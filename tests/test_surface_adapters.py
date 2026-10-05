@@ -37,9 +37,7 @@ def test_linear_adapter_posts_checkpoint_comment():
         return {"data": {"commentCreate": {"success": True}}}
 
     adapter = LinearCheckpointAdapter("issue-id", token="x", requester=requester)
-    observation = adapter.publish_checkpoint(
-        CheckpointEnvelope("PAS-185", "TESTED", "abc123")
-    )
+    observation = adapter.publish_checkpoint(CheckpointEnvelope("PAS-185", "TESTED", "abc123"))
     assert observation.available is True
     assert observation.head_sha == "abc123"
     assert calls[0][0] == "https://api.linear.app/graphql"
@@ -53,9 +51,7 @@ def test_notion_adapter_appends_checkpoint_block():
         return {"object": "list"}
 
     adapter = NotionCheckpointAdapter("page-id", token="x", requester=requester)
-    observation = adapter.publish_checkpoint(
-        CheckpointEnvelope("PAS-185", "REVIEW", "abc123")
-    )
+    observation = adapter.publish_checkpoint(CheckpointEnvelope("PAS-185", "REVIEW", "abc123"))
     assert observation.available is True
     assert calls[0][1] == "PATCH"
     content = calls[0][2]["children"][0]["paragraph"]["rich_text"][0]["text"]["content"]

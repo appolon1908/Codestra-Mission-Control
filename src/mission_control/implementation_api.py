@@ -75,10 +75,7 @@ class ImplementationAPI:
                     )
                     return
                 if parsed.path == "/platform/v1/agent-executions":
-                    items = [
-                        _row_payload(row)
-                        for row in store.list_implementation_executions()
-                    ]
+                    items = [_row_payload(row) for row in store.list_implementation_executions()]
                     self._json(200, {"count": len(items), "items": items})
                     return
                 prefix = "/platform/v1/agent-executions/"
@@ -117,18 +114,14 @@ class ImplementationAPI:
                         "branch",
                         "worktree",
                     }
-                    missing = sorted(
-                        key for key in required if not str(body.get(key, "")).strip()
-                    )
+                    missing = sorted(key for key in required if not str(body.get(key, "")).strip())
                     if missing:
                         self._json(
                             400,
                             {"error": "missing_fields", "fields": missing},
                         )
                         return
-                    execution_id = str(
-                        body.get("execution_id") or f"impl-{uuid.uuid4().hex}"
-                    )
+                    execution_id = str(body.get("execution_id") or f"impl-{uuid.uuid4().hex}")
                     try:
                         agent_number = store.start_implementation_execution(
                             execution_id=execution_id,
@@ -179,9 +172,7 @@ class ImplementationAPI:
                     try:
                         decision = store.record_implementation_proof(
                             execution_id,
-                            implementation_files=list(
-                                body.get("implementation_files") or []
-                            ),
+                            implementation_files=list(body.get("implementation_files") or []),
                             api_endpoints=list(body.get("api_endpoints") or []),
                             tests=dict(body.get("tests") or {}),
                             local_commit_sha=body.get("local_commit_sha"),

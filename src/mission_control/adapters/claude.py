@@ -89,9 +89,7 @@ class ClaudeAdapter(ProcessAgentAdapter):
     def extract_session_id(self, stdout_path: Path) -> str | None:
         if not stdout_path.is_file():
             return None
-        for raw in stdout_path.read_text(
-            encoding="utf-8", errors="replace"
-        ).splitlines():
+        for raw in stdout_path.read_text(encoding="utf-8", errors="replace").splitlines():
             try:
                 event = json.loads(raw)
             except json.JSONDecodeError:

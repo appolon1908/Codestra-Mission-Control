@@ -73,36 +73,88 @@ class OversightStore:
     def register_supervisor(self, supervisor: Supervisor) -> None:
         now = _now().isoformat()
         with self.store.connection() as conn:
-            conn.execute("""INSERT INTO supervisors VALUES(?,?,?,?,?,?,?)
+            conn.execute(
+                """INSERT INTO supervisors VALUES(?,?,?,?,?,?,?)
                 ON CONFLICT(supervisor_id) DO UPDATE SET
                 scope_type=excluded.scope_type,scope_key=excluded.scope_key,role=excluded.role,
                 implementation_allowed=excluded.implementation_allowed,updated_at=excluded.updated_at""",
-                (supervisor.supervisor_id, supervisor.scope_type, supervisor.scope_key,
-                 supervisor.role, int(supervisor.implementation_allowed), now, now))
+                (
+                    supervisor.supervisor_id,
+                    supervisor.scope_type,
+                    supervisor.scope_key,
+                    supervisor.role,
+                    int(supervisor.implementation_allowed),
+                    now,
+                    now,
+                ),
+            )
 
-    def checkpoint(self, *, agent_id: str, state: str, summary: str,
-                   repository: str | None = None, mission_id: str | None = None,
-                   task_id: str | None = None, branch: str | None = None,
-                   head_sha: str | None = None, dirty_count: int = 0,
-                   evidence: dict | None = None) -> int:
+    def checkpoint(
+        self,
+        *,
+        agent_id: str,
+        state: str,
+        summary: str,
+        repository: str | None = None,
+        mission_id: str | None = None,
+        task_id: str | None = None,
+        branch: str | None = None,
+        head_sha: str | None = None,
+        dirty_count: int = 0,
+        evidence: dict | None = None,
+    ) -> int:
         with self.store.connection() as conn:
-            cur = conn.execute("""INSERT INTO durable_agent_checkpoints
+            cur = conn.execute(
+                """INSERT INTO durable_agent_checkpoints
                 (agent_id,repository,mission_id,task_id,branch,head_sha,dirty_count,state,
                  summary,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                (agent_id, repository, mission_id, task_id, branch, head_sha, dirty_count,
-                 state, summary, json.dumps(evidence or {}, sort_keys=True), _now().isoformat()))
+                (
+                    agent_id,
+                    repository,
+                    mission_id,
+                    task_id,
+                    branch,
+                    head_sha,
+                    dirty_count,
+                    state,
+                    summary,
+                    json.dumps(evidence or {}, sort_keys=True),
+                    _now().isoformat(),
+                ),
+            )
             return int(cur.lastrowid)
 
-    def notify(self, *, severity: str, kind: str, subject: str, message: str,
-               dedupe_key: str | None = None, agent_id: str | None = None,
-               repository: str | None = None, mission_id: str | None = None,
-               task_id: str | None = None) -> None:
+    def notify(
+        self,
+        *,
+        severity: str,
+        kind: str,
+        subject: str,
+        message: str,
+        dedupe_key: str | None = None,
+        agent_id: str | None = None,
+        repository: str | None = None,
+        mission_id: str | None = None,
+        task_id: str | None = None,
+    ) -> None:
         with self.store.connection() as conn:
-            conn.execute("""INSERT OR IGNORE INTO notifications
+            conn.execute(
+                """INSERT OR IGNORE INTO notifications
                 (severity,kind,subject,message,agent_id,repository,mission_id,task_id,
                  dedupe_key,state,created_at) VALUES(?,?,?,?,?,?,?,?,?,'OPEN',?)""",
-                (severity, kind, subject, message, agent_id, repository, mission_id,
-                 task_id, dedupe_key, _now().isoformat()))
+                (
+                    severity,
+                    kind,
+                    subject,
+                    message,
+                    agent_id,
+                    repository,
+                    mission_id,
+                    task_id,
+                    dedupe_key,
+                    _now().isoformat(),
+                ),
+            )
 
     def scan_stale_agents(self, agent_registry, *, stale_after_seconds: int = 300) -> list[str]:
         cutoff = _now() - timedelta(seconds=stale_after_seconds)
@@ -116,16 +168,21 @@ class OversightStore:
                 agent_id = lane["agent_id"]
                 stale.append(agent_id)
                 self.notify(
-                    severity="HIGH", kind="AGENT_HEARTBEAT_LOST",
+                    severity="HIGH",
+                    kind="AGENT_HEARTBEAT_LOST",
                     subject=f"Agent stopped: {agent_id}",
                     message="Heartbeat expired. Preserve checkpoint and require governed recovery before reassignment.",
-                    dedupe_key=f"heartbeat:{agent_id}", agent_id=agent_id,
-                    repository=lane.get("repository"), mission_id=lane.get("mission_id"),
+                    dedupe_key=f"heartbeat:{agent_id}",
+                    agent_id=agent_id,
+                    repository=lane.get("repository"),
+                    mission_id=lane.get("mission_id"),
                     task_id=lane.get("task_id"),
                 )
         return stale
 
     def notifications(self) -> list[dict]:
         with self.store.connection() as conn:
-            return [dict(r) for r in conn.execute(
-                "SELECT * FROM notifications ORDER BY id DESC").fetchall()]
+            return [
+                dict(r)
+                for r in conn.execute("SELECT * FROM notifications ORDER BY id DESC").fetchall()
+            ]

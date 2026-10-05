@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -22,9 +21,7 @@ GATED_STATUSES = frozenset({MissionStatus.MERGE_READY, MissionStatus.COMPLETE})
 
 class CompletionBlocked(RuntimeError):
     def __init__(self, mission_id: str, status: MissionStatus, reasons: list[str]) -> None:
-        super().__init__(
-            f"{mission_id} cannot enter {status.value}: " + ", ".join(reasons)
-        )
+        super().__init__(f"{mission_id} cannot enter {status.value}: " + ", ".join(reasons))
         self.mission_id = mission_id
         self.status = status
         self.reasons = reasons
@@ -385,18 +382,12 @@ class MissionStore:
     def list_repositories(self) -> list[sqlite3.Row]:
         with self.connection() as conn:
             return list(
-                conn.execute(
-                    "SELECT * FROM repositories ORDER BY lower(repository), repository"
-                )
+                conn.execute("SELECT * FROM repositories ORDER BY lower(repository), repository")
             )
 
     def list_missions(self) -> list[sqlite3.Row]:
         with self.connection() as conn:
-            return list(
-                conn.execute(
-                    "SELECT * FROM missions ORDER BY updated_at, mission_id"
-                )
-            )
+            return list(conn.execute("SELECT * FROM missions ORDER BY updated_at, mission_id"))
 
     def get_repository(self, repository: str) -> sqlite3.Row | None:
         with self.connection() as conn:
@@ -433,11 +424,7 @@ class MissionStore:
     ) -> list[sqlite3.Row]:
         with self.connection() as conn:
             if not states:
-                return list(
-                    conn.execute(
-                        "SELECT * FROM agent_executions ORDER BY started_at"
-                    )
-                )
+                return list(conn.execute("SELECT * FROM agent_executions ORDER BY started_at"))
             placeholders = ",".join("?" for _ in states)
             return list(
                 conn.execute(
@@ -775,10 +762,7 @@ class MissionStore:
         with self.connection() as conn:
             if not states:
                 return list(
-                    conn.execute(
-                        "SELECT * FROM implementation_executions "
-                        "ORDER BY agent_number"
-                    )
+                    conn.execute("SELECT * FROM implementation_executions ORDER BY agent_number")
                 )
             placeholders = ",".join("?" for _ in states)
             return list(
@@ -1690,134 +1674,6 @@ class MissionStore:
             ).fetchone()
             conn.execute("COMMIT")
             return updated
-
-    def upsert_worker_node(self, node_id: str, capabilities: dict) -> None:
-        now = _iso_now()
-        with self.connection() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            conn.execute(
-                """
-                INSERT INTO worker_nodes (
-                    node_id, hostname, os, lanes_json, capabilities_json,
-                    production_effects_enabled, registered_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(node_id) DO UPDATE SET
-                    hostname=excluded.hostname,
-                    os=excluded.os,
-                    lanes_json=excluded.lanes_json,
-                    capabilities_json=excluded.capabilities_json,
-                    production_effects_enabled=excluded.production_effects_enabled,
-                    updated_at=excluded.updated_at
-                """,
-                (
-                    node_id,
-                    capabilities["hostname"],
-                    capabilities["os"],
-                    json.dumps(capabilities["lanes"]),
-                    json.dumps(capabilities, sort_keys=True),
-                    int(bool(capabilities.get("production_effects_enabled"))),
-                    now,
-                    now,
-                ),
-            )
-            self._event(
-                conn,
-                f"node:{node_id}",
-                "WORKER_NODE_REGISTERED",
-                None,
-                {
-                    "lanes": capabilities["lanes"],
-                    "providers": capabilities.get("providers", []),
-                },
-            )
-            conn.execute("COMMIT")
-
-    def record_worker_heartbeat(self, node_id: str, at: str) -> bool:
-        with self.connection() as conn:
-            changed = conn.execute(
-                "UPDATE worker_nodes SET last_heartbeat_at=? WHERE node_id=?",
-                (at, node_id),
-            ).rowcount
-            return bool(changed)
-
-    def record_provider_auth(self, node_id: str, status: dict) -> None:
-        with self.connection() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            conn.execute(
-                """
-                INSERT INTO worker_provider_auth (
-                    node_id, provider, authenticated, auth_method, exit_code,
-                    detail, checked_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(node_id, provider) DO UPDATE SET
-                    authenticated=excluded.authenticated,
-                    auth_method=excluded.auth_method,
-                    exit_code=excluded.exit_code,
-                    detail=excluded.detail,
-                    checked_at=excluded.checked_at
-                """,
-                (
-                    node_id,
-                    status["provider"],
-                    int(bool(status["authenticated"])),
-                    status.get("auth_method"),
-                    status.get("exit_code"),
-                    status.get("detail"),
-                    status["checked_at"],
-                ),
-            )
-            self._event(
-                conn,
-                f"node:{node_id}",
-                "WORKER_PROVIDER_AUTH_RECORDED",
-                None,
-                {
-                    "provider": status["provider"],
-                    "authenticated": bool(status["authenticated"]),
-                },
-            )
-            conn.execute("COMMIT")
-
-    @staticmethod
-    def _worker_node_payload(row: sqlite3.Row) -> dict:
-        item = dict(row)
-        item["lanes"] = json.loads(item.pop("lanes_json"))
-        item["capabilities"] = json.loads(item.pop("capabilities_json"))
-        item["production_effects_enabled"] = bool(item["production_effects_enabled"])
-        return item
-
-    def get_worker_node(self, node_id: str) -> dict | None:
-        with self.connection() as conn:
-            row = conn.execute(
-                "SELECT * FROM worker_nodes WHERE node_id=?",
-                (node_id,),
-            ).fetchone()
-        return self._worker_node_payload(row) if row else None
-
-    def list_worker_nodes(self) -> list[dict]:
-        with self.connection() as conn:
-            rows = list(conn.execute("SELECT * FROM worker_nodes ORDER BY node_id"))
-        return [self._worker_node_payload(row) for row in rows]
-
-    def list_provider_auth(self, node_id: str) -> list[dict]:
-        with self.connection() as conn:
-            rows = list(
-                conn.execute(
-                    """
-                    SELECT provider, authenticated, auth_method, exit_code, detail, checked_at
-                    FROM worker_provider_auth
-                    WHERE node_id=?
-                    ORDER BY provider
-                    """,
-                    (node_id,),
-                )
-            )
-        items = [dict(row) for row in rows]
-        for item in items:
-            item["authenticated"] = bool(item["authenticated"])
-        return items
 
     def events(self, mission_id: str) -> list[sqlite3.Row]:
         with self.connection() as conn:

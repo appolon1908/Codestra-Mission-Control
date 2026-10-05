@@ -144,9 +144,19 @@ def test_expired_clean_writer_is_reassigned(tmp_path):
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                "old-exec", "M-0", "old-agent", "codex", "LOST", 1,
-                "/worktrees/old", "[]", "/tmp/out", "/tmp/err", "/tmp/result",
-                now, now,
+                "old-exec",
+                "M-0",
+                "old-agent",
+                "codex",
+                "LOST",
+                1,
+                "/worktrees/old",
+                "[]",
+                "/tmp/out",
+                "/tmp/err",
+                "/tmp/result",
+                now,
+                now,
             ),
         )
     snapshot = scheduler.tick()

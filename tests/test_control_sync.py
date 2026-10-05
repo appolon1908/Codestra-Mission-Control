@@ -80,9 +80,7 @@ class FakeAdapter:
 
 
 def fresh(surface, head="abc123", status="OK", age=0):
-    return SurfaceObservation(
-        surface, True, status, head, observed_at=NOW - timedelta(seconds=age)
-    )
+    return SurfaceObservation(surface, True, status, head, observed_at=NOW - timedelta(seconds=age))
 
 
 def test_unreachable_source_does_not_collapse_reachable_reconciliation():
@@ -91,9 +89,7 @@ def test_unreachable_source_does_not_collapse_reachable_reconciliation():
         fresh(Surface.LOCAL),
         fresh(Surface.GITHUB),
         fresh(Surface.LINEAR),
-        SurfaceObservation(
-            Surface.NOTION, False, "ERROR", error="URLError", observed_at=NOW
-        ),
+        SurfaceObservation(Surface.NOTION, False, "ERROR", error="URLError", observed_at=NOW),
     ]
     decision = reconcile(cp, obs, now=NOW, max_age=timedelta(minutes=15))
     assert decision.state == SyncState.BLOCKED
