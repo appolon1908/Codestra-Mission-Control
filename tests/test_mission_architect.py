@@ -1,4 +1,5 @@
 import pytest
+
 from mission_control.mission_architect import MissionArchitect, MissionBrief
 
 

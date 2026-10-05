@@ -1,5 +1,5 @@
+from mission_control.agent_registry import AgentIdentity, AgentRegistry
 from mission_control.store import MissionStore
-from mission_control.agent_registry import AgentRegistry, AgentIdentity
 
 
 def test_stale_declared_working_is_not_live(tmp_path):

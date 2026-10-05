@@ -1,4 +1,5 @@
 import pytest
+
 from mission_control.store import MissionStore
 from mission_control.work_authority import WorkAuthority, WorkItem, WorkType
 
@@ -27,10 +28,10 @@ def test_implementation_cannot_start_without_lane_authority(tmp_path):
     w = setup(tmp_path)
     w.publish(WorkItem("T", "r", "m", WorkType.ATOMIC_TASK, "task"))
     for args in (
-        dict(branch=None, worktree="/w", base_sha="a"),
-        dict(branch="main", worktree="/w", base_sha="a"),
-        dict(branch="mission/t", worktree=None, base_sha="a"),
-        dict(branch="mission/t", worktree="/w", base_sha=None),
+        {"branch": None, "worktree": "/w", "base_sha": "a"},
+        {"branch": "main", "worktree": "/w", "base_sha": "a"},
+        {"branch": "mission/t", "worktree": None, "base_sha": "a"},
+        {"branch": "mission/t", "worktree": "/w", "base_sha": None},
     ):
         with pytest.raises(ValueError):
             w.validate_implementation_start("T", **args)

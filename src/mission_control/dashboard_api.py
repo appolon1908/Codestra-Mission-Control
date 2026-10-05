@@ -1,26 +1,28 @@
 from __future__ import annotations
+
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
-from .dashboard_read_model import DashboardReadModel
-from .agent_registry import AgentRegistry
-from .oversight import OversightStore
-from .assignments import AssignmentStore
-from .realtime_events import RealtimeEvent, RealtimePublisher
-from .repository_sync import RepositorySyncStore
-from .repository_control import RepositoryControlCenter
-from .dashboard_contract import dashboard_contract
-from .monitoring_evidence import snapshot as monitoring_snapshot
-from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
-from .router_store import RouterStore
-from .local_work_discovery import LocalWorkDiscovery
-from .convergence_store import ConvergenceStore
-from .security import KeycloakVerifier, AuthError
-from .discovery_engine import DiscoveryEngine
 import os
 import re
 import subprocess
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+from .agent_registry import AgentRegistry
+from .assignments import AssignmentStore
+from .convergence_store import ConvergenceStore
+from .dashboard_contract import dashboard_contract
+from .dashboard_read_model import DashboardReadModel
+from .discovery_engine import DiscoveryEngine
+from .local_work_discovery import LocalWorkDiscovery
+from .monitoring_evidence import snapshot as monitoring_snapshot
+from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
+from .oversight import OversightStore
+from .realtime_events import RealtimeEvent, RealtimePublisher
+from .repository_control import RepositoryControlCenter
+from .repository_sync import RepositorySyncStore
+from .router_store import RouterStore
+from .security import AuthError, KeycloakVerifier
 
 PREFIX = "/platform/v1/dashboard"
 
@@ -134,7 +136,7 @@ class DashboardAPI:
                                 },
                             )
                         return self.send_json(201, convergence.create_mission(body))
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - API boundary
                         return self.send_json(
                             400,
                             {
@@ -173,6 +175,7 @@ class DashboardAPI:
                                 "select * from execution_contracts where task_id=?", (tid,)
                             ).fetchone()
                         contract = dict(ec) if ec else {}
+
                         def parse(k):
                             return json.loads(contract.get(k) or "[]")
 
@@ -258,7 +261,7 @@ class DashboardAPI:
                         return self.send_json(
                             201 if result["status"] == "CERTIFIED" else 422, result
                         )
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - API boundary
                         return self.send_json(
                             422,
                             {
@@ -300,7 +303,7 @@ class DashboardAPI:
                                     },
                                 )
                             )
-                        except Exception:
+                        except Exception:  # noqa: BLE001, S110 - realtime is best-effort
                             pass
                         return self.send_json(201, claim.__dict__)
                     except ValueError as exc:
@@ -315,7 +318,7 @@ class DashboardAPI:
                         sha = subprocess.check_output(
                             ["git", "rev-parse", "HEAD"], cwd=os.getcwd(), text=True
                         ).strip()
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - health endpoint degrades safely
                         sha = "0" * 40
                     return self.send_json(
                         200,
@@ -358,7 +361,7 @@ class DashboardAPI:
                         return self.send_json(
                             200, json.loads(open("openapi/mission-control/openapi.json").read())
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - file/JSON boundary
                         return self.send_json(404, {"error": "openapi_missing"})
                 if p.path == PREFIX + "/monitoring-lock":
                     return self.send_json(200, monitoring_lock_snapshot())
@@ -421,7 +424,7 @@ class DashboardAPI:
                                     )
                                 else:
                                     x["execution_ready"] = False
-                            except Exception:
+                            except Exception:  # noqa: BLE001 - optional legacy table
                                 x["execution_ready"] = False
                             out.append(x)
                     return self.send_json(200, {"repository": repo, "tasks": out})
@@ -464,7 +467,7 @@ class DashboardAPI:
                                     "execution_ready": x["ready"] or 0,
                                 },
                             )
-                        except Exception:
+                        except Exception:  # noqa: BLE001 - optional intelligence schema
                             return self.send_json(
                                 503, {"error": "launch_intelligence_not_initialized"}
                             )

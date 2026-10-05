@@ -1,5 +1,5 @@
-from mission_control.store import MissionStore
 from mission_control.repository_sync import RepositorySyncStore
+from mission_control.store import MissionStore
 
 
 def test_delivery_state_tracks_ci_cd_and_last_pr(tmp_path):

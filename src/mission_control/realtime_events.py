@@ -1,9 +1,10 @@
 from __future__ import annotations
-from dataclasses import dataclass, asdict
-from datetime import UTC, datetime
+
 import json
 import os
 import uuid
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from urllib.request import Request, urlopen
 
 

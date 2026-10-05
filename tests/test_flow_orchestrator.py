@@ -1,6 +1,6 @@
+from mission_control.continuous_flow import FlowAction
 from mission_control.flow_orchestrator import FlowOrchestrator
 from mission_control.lane_taxonomy import AgentLane
-from mission_control.continuous_flow import FlowAction
 from mission_control.mission_router import AtomicTask, RankedTask
 
 

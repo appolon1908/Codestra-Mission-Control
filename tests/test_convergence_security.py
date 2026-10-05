@@ -1,8 +1,8 @@
-from mission_control.security import KeycloakVerifier, ROLE_PERMISSIONS
 from mission_control.convergence_store import ConvergenceStore
-from mission_control.store import MissionStore
-from mission_control.router_store import RouterStore
 from mission_control.mission_router import AtomicTask
+from mission_control.router_store import RouterStore
+from mission_control.security import ROLE_PERMISSIONS, KeycloakVerifier
+from mission_control.store import MissionStore
 
 
 def test_disabled_local_auth_is_explicit_admin():

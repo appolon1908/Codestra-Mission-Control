@@ -16,7 +16,7 @@ def setup(tmp_path):
 
 
 def test_one_supervisor_per_repo_and_control_surface(tmp_path):
-    base, agents, oversight = setup(tmp_path)
+    base, _agents, oversight = setup(tmp_path)
     oversight.register_supervisor(Supervisor("repo-mw", "REPOSITORY", "Middleware-"))
     oversight.register_supervisor(Supervisor("vs-control", "CONTROL_SURFACE", "VS_CODE"))
     oversight.register_supervisor(Supervisor("desktop-control", "WORKSTATION", "UBUNTU_DESKTOP"))
@@ -27,7 +27,7 @@ def test_one_supervisor_per_repo_and_control_surface(tmp_path):
 
 
 def test_checkpoint_survives_agent_process_and_records_exact_head(tmp_path):
-    base, agents, oversight = setup(tmp_path)
+    base, _agents, oversight = setup(tmp_path)
     checkpoint_id = oversight.checkpoint(
         agent_id="codex-01",
         repository="Middleware-",

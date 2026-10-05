@@ -1,7 +1,8 @@
 from __future__ import annotations
+
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import secrets
 
 
 @dataclass(frozen=True)

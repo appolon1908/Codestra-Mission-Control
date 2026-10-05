@@ -1,12 +1,13 @@
 import json
 import threading
 from urllib.request import urlopen
+
+from mission_control.agent_registry import AgentRegistry
 from mission_control.dashboard_api import DashboardAPI
 from mission_control.mission_graph import MissionGraphStore
-from mission_control.agent_registry import AgentRegistry
 from mission_control.oversight import OversightStore
-from mission_control.store import MissionStore
 from mission_control.realtime_events import RealtimeEvent, RealtimePublisher
+from mission_control.store import MissionStore
 
 
 def test_dashboard_http_and_event_contract(tmp_path):

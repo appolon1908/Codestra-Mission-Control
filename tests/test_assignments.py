@@ -1,7 +1,8 @@
-from mission_control.assignments import AssignmentStore
-from mission_control.agent_registry import AgentRegistry, AgentIdentity
-from mission_control.store import MissionStore
 import pytest
+
+from mission_control.agent_registry import AgentIdentity, AgentRegistry
+from mission_control.assignments import AssignmentStore
+from mission_control.store import MissionStore
 
 
 def test_claim_is_exclusive_and_leased(tmp_path):

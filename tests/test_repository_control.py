@@ -1,8 +1,8 @@
-from mission_control.store import MissionStore
-from mission_control.repository_sync import RepositorySyncStore
-from mission_control.repository_control import RepositoryControlCenter
 from mission_control.agent_registry import AgentRegistry
+from mission_control.repository_control import RepositoryControlCenter
+from mission_control.repository_sync import RepositorySyncStore
 from mission_control.router_store import RouterStore
+from mission_control.store import MissionStore
 
 
 def test_control_center_rolls_repository_operational_state(tmp_path):

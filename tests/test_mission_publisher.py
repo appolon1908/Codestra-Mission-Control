@@ -1,9 +1,10 @@
 import pytest
-from mission_control.store import MissionStore
-from mission_control.router_store import RouterStore
+
 from mission_control.mission_graph import MissionGraphStore
-from mission_control.mission_router import AtomicTask
 from mission_control.mission_publisher import MissionPublisher
+from mission_control.mission_router import AtomicTask
+from mission_control.router_store import RouterStore
+from mission_control.store import MissionStore
 
 
 def setup(tmp_path):

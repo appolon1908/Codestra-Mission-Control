@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import os
 
 
 def _now() -> str:
@@ -150,7 +151,7 @@ class AgentRegistry:
                         "SELECT * FROM work_leases WHERE state IN ('ACTIVE','LEASED','WORKING')"
                     ).fetchall()
                 }
-            except Exception:
+            except sqlite3.Error:
                 leases = {}
         out = []
         for row in rows:

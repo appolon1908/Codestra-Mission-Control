@@ -54,9 +54,7 @@ class FlowOrchestrator:
             to_lane, release, request_next = AgentLane.REVIEW, True, True
         elif decision.action is FlowAction.HANDOFF_TESTING:
             to_lane, release, request_next = AgentLane.TESTING, True, True
-        elif decision.action is FlowAction.CERTIFICATION:
-            release, request_next = True, True
-        elif decision.action is FlowAction.NEXT_TASK:
+        elif decision.action is FlowAction.CERTIFICATION or decision.action is FlowAction.NEXT_TASK:
             release, request_next = True, True
         return Handoff(task_id, lane, to_lane, release, request_next, decision.action)
 

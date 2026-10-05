@@ -1,9 +1,10 @@
 from __future__ import annotations
-from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+
 import os
 import subprocess
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ class LocalWorkDiscovery:
         return [name for name, _ in self._repos(None)]
 
     def scan(self, repository: str | None = None, recent_hours: int = 48) -> list[dict]:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, min(recent_hours, 720)))
+        cutoff = datetime.now(UTC) - timedelta(hours=max(1, min(recent_hours, 720)))
         out = []
         for name, repo in self._repos(repository):
             raw = self._git(repo, "worktree", "list", "--porcelain", check=False)
@@ -75,8 +76,8 @@ class LocalWorkDiscovery:
                     continue
                 committed = self._git(wt, "show", "-s", "--format=%cI", "HEAD", check=False)
                 try:
-                    dt = datetime.fromisoformat(committed).astimezone(timezone.utc)
-                except Exception:
+                    dt = datetime.fromisoformat(committed).astimezone(UTC)
+                except ValueError:
                     continue
                 dirty = len(self._git(wt, "status", "--porcelain", check=False).splitlines())
                 branch = self._git(wt, "branch", "--show-current", check=False) or "DETACHED"

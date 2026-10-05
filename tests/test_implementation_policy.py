@@ -1,4 +1,5 @@
 import pytest
+
 from mission_control.implementation_policy import ImplementationPolicy
 
 

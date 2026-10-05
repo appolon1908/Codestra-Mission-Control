@@ -1,9 +1,14 @@
 from __future__ import annotations
+
 import json
+import logging
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+
 from .local_work_discovery import LocalWorkDiscovery
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DiscoveryEngine:
@@ -53,7 +58,7 @@ class DiscoveryEngine:
                 try:
                     self.scan_once()
                 except Exception:
-                    pass
+                    LOGGER.exception("local work discovery scan failed")
                 self._stop.wait(self.interval)
 
         self._thread = threading.Thread(target=run, name="local-work-discovery", daemon=True)

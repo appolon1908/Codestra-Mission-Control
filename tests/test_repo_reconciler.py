@@ -1,5 +1,5 @@
+from mission_control.repo_reconciler import RepoFacts, RepoReconciler
 from mission_control.store import MissionStore
-from mission_control.repo_reconciler import RepoReconciler, RepoFacts
 
 
 class Pub:

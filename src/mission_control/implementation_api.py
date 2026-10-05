@@ -142,7 +142,7 @@ class ImplementationAPI:
                             },
                         )
                         return
-                    except Exception as exc:  # pragma: no cover - DB uniqueness guard
+                    except Exception as exc:  # noqa: BLE001  # pragma: no cover - DB uniqueness guard
                         self._json(
                             409,
                             {

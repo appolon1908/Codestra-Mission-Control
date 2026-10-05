@@ -1,4 +1,5 @@
 import pytest
+
 from mission_control.lane_taxonomy import (
     AgentLane,
     TaskLifecycle,
