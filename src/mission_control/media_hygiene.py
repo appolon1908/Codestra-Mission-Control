@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
 
 VIDEO_EXTENSIONS = frozenset({
     ".mp4", ".mov", ".mkv", ".avi", ".wmv", ".m4v", ".webm",
