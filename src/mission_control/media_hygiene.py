@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 VIDEO_EXTENSIONS = frozenset({
@@ -154,7 +154,7 @@ def archive_target(
         return None
     if item.path.drive.casefold() != "c:":
         return None
-    stamp = datetime.fromtimestamp(item.mtime, tz=timezone.utc)
+    stamp = datetime.fromtimestamp(item.mtime, tz=UTC)
     return archive_root / f"{stamp.year:04d}" / f"{stamp.month:02d}" / item.path.name
 
 
