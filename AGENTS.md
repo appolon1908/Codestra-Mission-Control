@@ -1,19 +1,81 @@
-# Mission Control Agent Contract — Implementation Only v2
+# Codestra Agent Governance Standard
 
-1. Implementation is the assignment. Every coding agent must make a material code, configuration, migration, data, API, endpoint, or automated-test change. Review, audit, analysis, specification, acceptance criteria, or documentation alone never satisfies an implementation task.
-2. Review the logic, then fix it in the same mission. Inspect design, workflow, API and endpoint correctness first; any required fix found by that review must be implemented before the agent stops.
-3. Every run is numbered. Start the run through Mission Control and record agent_number, execution_id, mission, agent ID, provider, workstation, branch and worktree.
-4. Read the assigned Linear issue and newest Notion/handoff context before editing.
-5. Verify repository path, branch, local HEAD, dirty state, upstream/remote SHA and existing PR before writing.
-6. Use a dedicated Git worktree and a non-main task branch. Never share a writable checkout between agents.
-7. One writer lease per mission. Heartbeat while writing; stop writing if the lease expires.
-8. Implement the smallest coherent production-quality slice. If the mission touches an API, record the implemented or changed endpoints explicitly.
-9. Run focused tests, lint/static checks and contract checks. Fix failures introduced by the agent.
-10. Commit only the task's intended files. Do not use reset, clean, stash, force push, destructive checkout, or overwrite unknown user work.
-11. Push is part of implementation. Before pushing, fetch the exact remote branch/base, require a clean and non-stale worktree, and use a normal non-force push to the intended non-main branch.
-12. Open or update a PR. A local commit without a pushed branch and PR is not delivered implementation.
-13. Prove delivery by recording local delivery commit SHA, pushed remote branch SHA, and PR head SHA. All three must be present and exactly equal.
-14. Record PR number and URL, implementation files, API endpoints, and machine-readable test evidence. A SHA mismatch or missing evidence is NEEDS_REWORK, never success.
-15. IN_REVIEW never creates a review-only coding-agent mission. If implementation proof is missing, assign an implementation agent. If proof is PROVEN, external review and CI continue independently while the coding agent moves to the next implementation mission.
-16. Never self-certify staging or production. Merge, staging mutation and production effects remain governed by approval policy.
-17. End every proven delivery with a structured handoff and REQUEST_NEXT_TASK=true so the next assignment is another implementation mission.
+Every task belongs to Product → Section → Subsection → Atomic Task.
+
+Valid promotion path only:
+
+atomic task → subsection branch → section branch → development → testing → staging → production
+
+No other promotion path is accepted.
+
+## Ownership and leases
+
+Each active subsection has exactly one implementation owner. Review, test, certification, and investigation agents may assist but must not independently edit the same implementation scope unless explicitly assigned.
+
+Allowed states: NOT_STARTED, CLAIMED, IN_PROGRESS, BLOCKED, REVIEW, COMPLETE, CERTIFIED.
+
+Abandoned leases may be reclaimed only after the configured heartbeat timeout and worktree inspection.
+
+## Mandatory pre-work synchronization
+
+Before editing: fetch/prune origin; verify workstation and parent branch; record HEAD SHA; verify clean tree; record ahead/behind; synchronize safely from parent; run preflight; verify production-effect gates remain disabled.
+
+Stop on unexplained local changes, divergence, invalidated base assumptions, conflicts, missing required dependencies/credentials, or uncertain safety. Never overwrite unknown local work.
+
+## Atomic implementation
+
+Every atomic task includes applicable implementation, tests, error handling, contracts, documentation, migrations, observability, and security review. Do not combine unrelated changes.
+
+## Code quality
+
+Completion is prohibited with placeholder code, TODO-as-implementation, dead/duplicate code, temporary bypasses, broad exception swallowing, hard-coded credentials, production secrets, unexplained lint suppression, disabled tests, skipped security checks, or temporary production flags.
+
+## Test before push
+
+Run applicable formatting, lint, types, unit, integration, contract/OpenAPI, migration, security, secret scan, and git diff --check gates before every checkpoint push. Do not knowingly push broken code.
+
+## Push discipline
+
+After each atomic checkpoint: validate, commit intended changes, push branch, verify remote SHA, update mission status, record blockers. Do not end with unexplained uncommitted implementation work.
+
+## Commit standard
+
+One understandable unit per commit. Avoid meaningless messages such as update, fix, changes, or stuff.
+
+## Parent synchronization
+
+Before merge request: fetch remote; compare parent; integrate current parent safely; resolve conflicts intentionally; rerun required tests; push refreshed exact branch; require CI on the new exact SHA. Old CI evidence does not certify changed code.
+
+## Protected branches
+
+Do not directly develop on main, development, testing, staging, or production. Protected branches move only through approved pull requests and required checks. Force pushes are prohibited.
+
+## Production effects default OFF
+
+Unless a separately approved production activation mission changes them:
+
+PRODUCTION_GO=NO
+LIVE_CAPABILITIES_ENABLED=NO
+EXTERNAL_EFFECTS=false
+
+Implementation missions must not silently enable calls, SMS, email, WhatsApp, payments, social publishing, production database mutation, production infrastructure changes, credential issuance, or external media publishing.
+
+## Completion evidence
+
+Every completed subsection records final branch/SHA, parent SHA, changed files, tests/results, security result, migration result, API/contract result, dependency changes, limitations, remaining TODOs, CI result, and reviewer result. Missing evidence means not COMPLETE.
+
+## COMPLETE
+
+COMPLETE requires implementation present, applicable local/integration/contract/security tests green, current documentation, valid migrations, branch pushed, clean tree, local/remote SHA match, and no unresolved blockers.
+
+## CERTIFIED
+
+CERTIFIED additionally requires exact-SHA CI green, independent review, parent integration success, regression/security/performance gates as applicable, no unresolved critical/high defects, and stored completion evidence. Only CERTIFIED work may promote.
+
+## Cleanup
+
+After parent integration, verify exact intended changes are present, remove obsolete temporary worktrees/locks, archive evidence, prune stale local refs, preserve unmerged branches, and retain recovery references where required.
+
+## Fail closed
+
+When safety cannot be proven, stop and mark BLOCKED. Never guess around secrets, migrations, authorization, branch ancestry, production effects, destructive operations, or incomplete CI evidence.
