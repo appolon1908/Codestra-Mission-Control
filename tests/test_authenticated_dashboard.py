@@ -51,6 +51,7 @@ def dashboard(tmp_path):
         audience=None,
         azp="mission-control-ui",
         origin=None,
+        method="GET",
     ):
         headers = {}
         if bearer:
@@ -69,7 +70,9 @@ def dashboard(tmp_path):
             )
         if origin:
             headers["Origin"] = origin
-        req = Request(f"http://127.0.0.1:{server.server_port}" + path, headers=headers)
+        req = Request(
+            f"http://127.0.0.1:{server.server_port}" + path, headers=headers, method=method
+        )
         try:
             with urlopen(req, timeout=5) as response:
                 return response.status, json.load(response), dict(response.headers)
@@ -198,3 +201,10 @@ def test_authenticated_http_returns_real_postgres_rows(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_mutations_denied_in_dashboard_even_with_operator(dashboard):
+    for path in ("/platform/v1/assignments", "/api/v1/missions"):
+        status, data, _ = dashboard(path, method="POST")
+        assert status == 403
+        assert data["error_code"] == "DASHBOARD_MUTATIONS_DISABLED"

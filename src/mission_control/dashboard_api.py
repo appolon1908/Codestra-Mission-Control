@@ -30,11 +30,14 @@ from .security import AuthError, KeycloakVerifier
 PREFIX="/platform/v1/dashboard"
 
 class DashboardAPI:
-    def __init__(self,store,*,authorization=None,control_plane=None):
+    def __init__(self,store,*,authorization=None,control_plane=None,allow_mutations=False):
         self.store=store
         # Never implicitly enable anonymous Administrator in the real dashboard.
         self.authorization=authorization
         self.control_plane=control_plane
+        # This dashboard defaults to read-only even for authenticated operators.
+        # Mutation flows belong to separately reviewed development entrypoints.
+        self.allow_mutations=allow_mutations
     def server(self,host="127.0.0.1",port=0):
         started=time.monotonic()
         # Bind the runtime report to the exact source loaded at startup.
@@ -106,6 +109,8 @@ class DashboardAPI:
                 length=int(self.headers.get("Content-Length","0"));return json.loads(self.rfile.read(length) or b"{}")
             def do_POST(self):
                 if not self._allowed_origin():return
+                if not self.server.allow_mutations:
+                    return self.send_json(403,{"error_code":"DASHBOARD_MUTATIONS_DISABLED"})
                 p=urlparse(self.path)
                 if p.path=="/api/v1/missions":
                     if not self._principal("mission:write"):return
@@ -254,4 +259,6 @@ class DashboardAPI:
                     return self.send_json(200,{"notifications":oversight.notifications()})
                 return self.send_json(404,{"error":"not_found"})
             def log_message(self,*args): return
-        srv=ThreadingHTTPServer((host,port),Handler);srv.store=self.store;return srv
+        srv=ThreadingHTTPServer((host,port),Handler);srv.store=self.store
+        srv.allow_mutations=bool(self.allow_mutations)
+        return srv
