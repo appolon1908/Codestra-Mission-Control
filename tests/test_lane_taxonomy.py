@@ -1,5 +1,13 @@
 import pytest
-from mission_control.lane_taxonomy import AgentLane, TaskLifecycle, WorkSection, required_lane, validate_transition
+
+from mission_control.lane_taxonomy import (
+    AgentLane,
+    TaskLifecycle,
+    WorkSection,
+    required_lane,
+    validate_transition,
+)
+
 
 def test_sections_cover_dashboard_work_views():
     assert {"CORE","FEATURES","API","URLS_ROUTES","WORKSTATIONS","DELIVERY_CI"}.issubset({s.value for s in WorkSection})

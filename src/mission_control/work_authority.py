@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from enum import StrEnum
+
 
 class WorkState(StrEnum):
  PLANNED="PLANNED"; READY="READY"; IMPLEMENTING="IMPLEMENTING"; IMPLEMENTED="IMPLEMENTED"

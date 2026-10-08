@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import os
 
 
 def _now() -> str:
@@ -108,7 +109,7 @@ class AgentRegistry:
              ORDER BY r.provider,r.agent_id""").fetchall()
             executions={r['agent_id']:dict(r) for r in conn.execute("SELECT * FROM agent_executions WHERE state IN ('RUNNING','WORKING','STARTED') ORDER BY updated_at").fetchall()}
             try: leases={r['agent_id']:dict(r) for r in conn.execute("SELECT * FROM work_leases WHERE state IN ('ACTIVE','LEASED','WORKING')").fetchall()}
-            except Exception: leases={}
+            except sqlite3.OperationalError: leases={}
         out=[]
         for row in rows:
             x=dict(row);hb=x.get('heartbeat_at');fresh=False
