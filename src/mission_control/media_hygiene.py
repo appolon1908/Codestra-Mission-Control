@@ -4,7 +4,7 @@ import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 VIDEO_EXTENSIONS = frozenset({
     ".mp4", ".mov", ".mkv", ".avi", ".wmv", ".m4v", ".webm",
@@ -42,8 +42,16 @@ class DuplicateGroup:
     redundant: tuple[MediaFile, ...]
 
 
+def _lexical_path(path: Path) -> Path | PureWindowsPath:
+    """Interpret Windows paths correctly even on a Linux CI host."""
+    windows_path = PureWindowsPath(str(path))
+    if windows_path.drive or "\\" in str(path):
+        return windows_path
+    return path
+
+
 def _parts_lower(path: Path) -> tuple[str, ...]:
-    return tuple(part.casefold() for part in path.parts)
+    return tuple(part.casefold() for part in _lexical_path(path).parts)
 
 
 def is_excluded(path: Path) -> bool:
@@ -152,10 +160,11 @@ def archive_target(
 ) -> Path | None:
     if item.kind != "video" or item.size <= threshold_bytes:
         return None
-    if item.path.drive.casefold() != "c:":
+    lexical_path = _lexical_path(item.path)
+    if lexical_path.drive.casefold() != "c:":
         return None
     stamp = datetime.fromtimestamp(item.mtime, tz=UTC)
-    return archive_root / f"{stamp.year:04d}" / f"{stamp.month:02d}" / item.path.name
+    return archive_root / f"{stamp.year:04d}" / f"{stamp.month:02d}" / lexical_path.name
 
 
 def plan_archive(
