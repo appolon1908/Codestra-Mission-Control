@@ -66,6 +66,19 @@ def test_endpoint_requires_mission_read_and_returns_json(tmp_path, monkeypatch):
         assert body["repository"] == "Codestra-OpenBao"
         assert body["data_state"] == "NO_REGISTRY_DATA"
         assert body["mode"] == "READ_ONLY"
+        # Health is an explicit second read-only endpoint; server configuration
+        # is absent in this unit test, so no external network can be contacted.
+        monkeypatch.delenv("OPENBAO_HEALTH_URL", raising=False)
+        monkeypatch.delenv("OPENBAO_HEALTH_ALLOWED_HOSTS", raising=False)
+        with urlopen(Request(f"http://{host}:{port}/platform/v1/dashboard/openbao/health",
+                            headers={"Authorization": "Bearer local-test"})) as response:
+            health = json.load(response)
+        assert health == {"state": "NOT_CONFIGURED"}
+        try:
+            urlopen(f"http://{host}:{port}/platform/v1/dashboard/openbao/health")
+            assert False, "health endpoint requires mission:read"
+        except HTTPError as exc:
+            assert exc.code == 401
         with urlopen(Request(f"http://{host}:{port}/platform/v1/dashboard/contract",
                             headers={"Authorization": "Bearer local-test"})) as response:
             contract = json.load(response)

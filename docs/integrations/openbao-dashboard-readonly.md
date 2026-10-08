@@ -44,3 +44,23 @@ or OpenBao token in the UI bundle.
 
 This module does not initialize/unseal OpenBao, read a secret, mutate roles,
 change an image digest, or enable production effects.
+
+
+## Optional live health observation (separate from release certification)
+
+An operator may invoke GET /platform/v1/dashboard/openbao/health. This route
+requires mission:read and its server-side probe uses a fixed, administrator-set
+OPENBAO_HEALTH_URL (for example, https://bao.internal.example:8200/v1/sys/health)
+and a matching OPENBAO_HEALTH_ALLOWED_HOSTS DNS allowlist. The browser may not
+supply a URL, hostname or OpenBao token. The handler rejects HTTP, redirects,
+credential-bearing URLs, query strings, unexpected ports and unrelated routes.
+The TLS certificate is verified, GET is limited to 3 seconds, and responses
+are capped at 4096 bytes. Only initialized, sealed, standby and HTTP status
+are returned (no version, cluster identity or secret data).
+
+NOT_CONFIGURED, CONFIG_REJECTED, INVALID_RESPONSE or UNAVAILABLE explicitly
+mean that runtime health was not observed. An OBSERVED sealed/uninitialized
+vault is not ready, and even an unsealed observation is NOT a staging or
+production authorization. This request is read-only and must not start
+or initialize OpenBao. The test suite uses a fake HTTP opener; it never
+contacts a live secret service.
