@@ -56,3 +56,50 @@ def test_unique_media_is_never_marked_redundant():
     unique = media(r"C:\Users\Usuario\Videos\unique.mp4", 123, sha="u")
     assert mh.redundant_paths([]) == set()
     assert unique.path not in mh.redundant_paths([])
+
+
+def test_overlapping_scan_roots_never_create_self_duplicates(tmp_path):
+    video = tmp_path / "Videos" / "only.mp4"
+    video.parent.mkdir()
+    video.write_bytes(b"unique-video-data")
+
+    found = mh.scan_media([tmp_path, video.parent, tmp_path])
+    assert len(found) == 1
+    assert found[0].path == video
+    assert mh.exact_duplicate_groups(found + found) == []
+    assert video not in mh.redundant_paths(mh.exact_duplicate_groups(found + found))
+
+
+def test_direct_duplicate_alias_is_not_its_own_redundant_copy():
+    original = media(r"C:\Users\Usuario\Videos\clip.mp4", 100, sha="hash")
+    alias = media(r"c:\users\usuario\videos\clip.mp4", 100, sha="hash")
+    groups = mh.exact_duplicate_groups([original, alias, original])
+    assert groups == []
+
+
+def test_archive_plan_disambiguates_same_name_and_month():
+    threshold = mh.DEFAULT_ARCHIVE_THRESHOLD_BYTES
+    a = media(r"C:\Users\Usuario\Videos\clip.mp4", threshold + 1)
+    b = media(r"C:\Users\Usuario\Desktop\clip.mp4", threshold + 1)
+    archive_root = Path(r"E:\Media Library\Videos")
+    plan = mh.plan_archive([a, b], [], archive_root)
+    assert {source for source, _ in plan} == {a.path, b.path}
+    assert len({str(target).casefold() for _, target in plan}) == 2
+    assert all(target.suffix == ".mp4" for _, target in plan)
+    assert mh.plan_archive([b, a], [], archive_root) == plan
+
+
+def test_archive_plan_will_not_overwrite_preexisting_target(tmp_path):
+    threshold = mh.DEFAULT_ARCHIVE_THRESHOLD_BYTES
+    video = media(r"C:\Users\Usuario\Videos\clip.mp4", threshold + 1)
+    preferred = mh.archive_target(video, tmp_path)
+    assert preferred is not None
+    preferred.parent.mkdir(parents=True)
+    preferred.write_bytes(b"existing-unique-video")
+
+    plan = mh.plan_archive([video], [], tmp_path)
+    assert len(plan) == 1
+    assert plan[0][0] == video.path
+    assert plan[0][1] != preferred
+    assert not plan[0][1].exists()
+    assert preferred.read_bytes() == b"existing-unique-video"

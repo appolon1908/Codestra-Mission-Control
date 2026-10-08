@@ -50,6 +50,14 @@ def _lexical_path(path: Path) -> Path | PureWindowsPath:
     return path
 
 
+def _source_identity(path: Path) -> str:
+    """Normalize path identities before deduplication, including Windows case rules."""
+    lexical = _lexical_path(path)
+    if isinstance(lexical, PureWindowsPath):
+        return "windows:" + str(lexical).casefold()
+    return "native:" + str(path.resolve(strict=False))
+
+
 def _parts_lower(path: Path) -> tuple[str, ...]:
     return tuple(part.casefold() for part in _lexical_path(path).parts)
 
@@ -81,8 +89,9 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
 
 def scan_media(roots: Iterable[Path]) -> list[MediaFile]:
     found: list[MediaFile] = []
+    seen: set[str] = set()
     for root in roots:
-        if not root.exists():
+        if not root.exists() or is_excluded(root):
             continue
         for path in root.rglob("*"):
             if not path.is_file():
@@ -90,14 +99,25 @@ def scan_media(roots: Iterable[Path]) -> list[MediaFile]:
             kind = classify_media(path)
             if kind is None:
                 continue
+            identity = _source_identity(path)
+            if identity in seen:
+                continue
+            seen.add(identity)
             stat = path.stat()
             found.append(MediaFile(path=path, size=stat.st_size, mtime=stat.st_mtime, kind=kind))
     return found
 
 
 def with_hashes(files: Iterable[MediaFile]) -> list[MediaFile]:
+    # Callers may supply overlapping roots or the same MediaFile repeatedly.
+    # A path can never count as its own independent redundant copy.
     by_size: dict[int, list[MediaFile]] = {}
+    seen: set[str] = set()
     for item in files:
+        identity = _source_identity(item.path)
+        if identity in seen:
+            continue
+        seen.add(identity)
         by_size.setdefault(item.size, []).append(item)
 
     result: list[MediaFile] = []
@@ -167,6 +187,32 @@ def archive_target(
     return archive_root / f"{stamp.year:04d}" / f"{stamp.month:02d}" / lexical_path.name
 
 
+def _destination_identity(path: Path) -> str:
+    # Conservative case-insensitive comparison avoids collisions on Windows.
+    return str(path).casefold()
+
+
+def _available_archive_target(
+    preferred: Path, source: Path, reserved: set[str]
+) -> Path:
+    """Reserve an unused target; never plan to overwrite existing archive data."""
+    candidate = preferred
+    digest = hashlib.sha256(_source_identity(source).encode("utf-8")).hexdigest()[:12]
+    attempt = 0
+    while (
+        _destination_identity(candidate) in reserved
+        or candidate.exists()
+        or candidate.is_symlink()
+    ):
+        attempt += 1
+        if attempt > 1000:
+            raise ValueError(f"unable_to_resolve_archive_collision: {preferred}")
+        disambiguator = f"-{digest}" if attempt == 1 else f"-{digest}-{attempt}"
+        candidate = preferred.with_name(f"{preferred.stem}{disambiguator}{preferred.suffix}")
+    reserved.add(_destination_identity(candidate))
+    return candidate
+
+
 def plan_archive(
     files: Iterable[MediaFile],
     groups: Iterable[DuplicateGroup],
@@ -176,13 +222,21 @@ def plan_archive(
 ) -> list[tuple[Path, Path]]:
     redundant = redundant_paths(groups)
     planned: list[tuple[Path, Path]] = []
-    for item in files:
+    reserved: set[str] = set()
+    seen_sources: set[str] = set()
+    # Deterministic ordering ensures the same file keeps the preferred name.
+    for item in sorted(files, key=lambda entry: str(entry.path).casefold()):
+        identity = _source_identity(item.path)
+        if identity in seen_sources:
+            continue
+        seen_sources.add(identity)
         if item.path in redundant:
             continue
-        target = archive_target(item, archive_root, threshold_bytes=threshold_bytes)
-        if target is not None:
+        preferred = archive_target(item, archive_root, threshold_bytes=threshold_bytes)
+        if preferred is not None:
+            target = _available_archive_target(preferred, item.path, reserved)
             planned.append((item.path, target))
-    return sorted(planned, key=lambda pair: str(pair[0]).casefold())
+    return planned
 
 
 def duplicate_bytes(groups: Iterable[DuplicateGroup]) -> int:
