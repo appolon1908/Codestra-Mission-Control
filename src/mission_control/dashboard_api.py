@@ -1,24 +1,31 @@
 from __future__ import annotations
+
 import json
-from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
-from urllib.parse import parse_qs,urlparse
-from .dashboard_read_model import DashboardReadModel
+import logging
+import os
+import re
+import sqlite3
+import subprocess
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
 from .agent_registry import AgentRegistry
-from .oversight import OversightStore
 from .assignments import AssignmentStore
-from .realtime_events import RealtimeEvent, RealtimePublisher
-from .repository_sync import RepositorySyncStore
-from .repository_control import RepositoryControlCenter
+from .control_plane_read import ControlPlaneReadModel, SourceUnavailable
+from .convergence_store import ConvergenceStore
 from .dashboard_contract import dashboard_contract
+from .dashboard_read_model import DashboardReadModel
+from .discovery_engine import DiscoveryEngine
+from .local_work_discovery import LocalWorkDiscovery
 from .monitoring_evidence import snapshot as monitoring_snapshot
 from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
+from .oversight import OversightStore
+from .realtime_events import RealtimeEvent, RealtimePublisher
+from .repository_sync import RepositorySyncStore
 from .router_store import RouterStore
-from .local_work_discovery import LocalWorkDiscovery
-from .convergence_store import ConvergenceStore
-from .security import KeycloakVerifier,AuthError
-from .control_plane_read import ControlPlaneReadModel, SourceUnavailable
-from .discovery_engine import DiscoveryEngine
-import os,re,subprocess,time
+from .security import AuthError, KeycloakVerifier
 
 PREFIX="/platform/v1/dashboard"
 
@@ -29,7 +36,24 @@ class DashboardAPI:
         self.authorization=authorization
         self.control_plane=control_plane
     def server(self,host="127.0.0.1",port=0):
-        started=time.monotonic(); model=DashboardReadModel(self.store); local_work=LocalWorkDiscovery(); discovery_engine=DiscoveryEngine(local_work,interval_seconds=int(os.getenv("MISSION_CONTROL_DISCOVERY_INTERVAL","30")),snapshot_path=os.getenv("MISSION_CONTROL_DISCOVERY_SNAPSHOT","/tmp/mission-control-local-work.json")); discovery_engine.start(); convergence=ConvergenceStore(self.store); convergence.initialize(); auth=self.authorization if self.authorization is not None else KeycloakVerifier(mode="required"); control=self.control_plane if self.control_plane is not None else ControlPlaneReadModel(); router_store=RouterStore(self.store); router_store.initialize(); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); repo_control=RepositoryControlCenter(self.store); publisher=RealtimePublisher(os.getenv("MISSION_CONTROL_REALTIME_URL","http://127.0.0.1:8791/events"))
+        started=time.monotonic()
+        # Bind the runtime report to the exact source loaded at startup.
+        # Computing HEAD on every health request falsely reports new commits
+        # for old Python code kept alive in an existing process.
+        checkout=Path(__file__).resolve().parents[2]
+        try:
+            loaded_sha=subprocess.check_output(
+                ["git","rev-parse","HEAD"],cwd=checkout,text=True,
+                stderr=subprocess.DEVNULL,timeout=2,
+            ).strip()
+            loaded_tree_clean=not subprocess.check_output(
+                ["git","status","--porcelain"],cwd=checkout,text=True,
+                stderr=subprocess.DEVNULL,timeout=2,
+            ).strip()
+        except (OSError,subprocess.CalledProcessError,subprocess.TimeoutExpired):
+            loaded_sha=None
+            loaded_tree_clean=False
+        model=DashboardReadModel(self.store); local_work=LocalWorkDiscovery(); discovery_engine=DiscoveryEngine(local_work,interval_seconds=int(os.getenv("MISSION_CONTROL_DISCOVERY_INTERVAL","30")),snapshot_path=os.getenv("MISSION_CONTROL_DISCOVERY_SNAPSHOT","/tmp/mission-control-local-work.json")); discovery_engine.start(); convergence=ConvergenceStore(self.store); convergence.initialize(); auth=self.authorization if self.authorization is not None else KeycloakVerifier(mode="required"); control=self.control_plane if self.control_plane is not None else ControlPlaneReadModel(); router_store=RouterStore(self.store); router_store.initialize(); agents=AgentRegistry(self.store); oversight=OversightStore(self.store); assignments=AssignmentStore(self.store); assignments.initialize(); RepositorySyncStore(self.store).initialize(); publisher=RealtimePublisher(os.getenv("MISSION_CONTROL_REALTIME_URL","http://127.0.0.1:8791/events"))
         class Handler(BaseHTTPRequestHandler):
             def send_json(self,status,payload):
                 body=json.dumps(payload,default=str).encode()
@@ -89,7 +113,7 @@ class DashboardAPI:
                         body=self._body()
                         if not body.get("product_goal") or not body.get("business_reason"):return self.send_json(400,{"error_code":"MISSION_FIELDS_REQUIRED","message":"product_goal and business_reason required","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                         return self.send_json(201,convergence.create_mission(body))
-                    except Exception as exc:return self.send_json(400,{"error_code":"MISSION_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                    except (KeyError, ValueError, TypeError) as exc:return self.send_json(400,{"error_code":"MISSION_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 m=re.fullmatch(r"/api/v1/tasks/([^/]+)/lease",p.path)
                 if m:
                     principal=self._principal_any("router:lease","task:claim")
@@ -120,7 +144,7 @@ class DashboardAPI:
                         body=self._body()
                         if not re.fullmatch(r"[0-9a-f]{40}",body.get("exact_sha","")):raise ValueError("exact_sha_invalid")
                         result=convergence.certify(body);return self.send_json(201 if result["status"]=="CERTIFIED" else 422,result)
-                    except Exception as exc:return self.send_json(422,{"error_code":"EVIDENCE_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                    except (KeyError, ValueError, TypeError) as exc:return self.send_json(422,{"error_code":"EVIDENCE_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 if p.path=="/platform/v1/assignments":
                     if not self._principal_any("agent:assign","task:claim"):return
                     length=int(self.headers.get("Content-Length","0"))
@@ -132,7 +156,7 @@ class DashboardAPI:
                         claim=assignments.claim(**{k:body[k] for k in required})
                         agents.heartbeat(body["agent_id"],state="CLAIMED",repository=body["repository"],area_id=body["area"],subarea_id=body["subarea"],task_id=body["task_id"],mission_id=body.get("mission_id"),workstation="UBUNTU_DESKTOP")
                         try: publisher.publish_http(RealtimeEvent.create("mission.task.claimed",{"task_id":body["task_id"],"agent_id":body["agent_id"],"repository":body["repository"]}))
-                        except Exception: pass
+                        except OSError as exc: logging.getLogger(__name__).warning('mission_control_realtime_publish_failed: %s',type(exc).__name__)
                         return self.send_json(201,claim.__dict__)
                     except ValueError as exc:
                         return self.send_json(409,{"error":str(exc)})
@@ -141,9 +165,13 @@ class DashboardAPI:
                 if not self._allowed_origin():return
                 p=urlparse(self.path);q=parse_qs(p.query)
                 if p.path=="/healthz":
-                    try: sha=subprocess.check_output(["git","rev-parse","HEAD"],cwd=os.getcwd(),text=True).strip()
-                    except Exception: sha="0"*40
-                    return self.send_json(200,{"status":"OK","service_name":"agent-brain-backend","active_sha":sha,"uptime_seconds":round(time.monotonic()-started,3)})
+                    return self.send_json(200,{
+                        "status":"OK",
+                        "service_name":"agent-brain-backend",
+                        "active_sha":loaded_sha,
+                        "source_clean_at_start":loaded_tree_clean,
+                        "uptime_seconds":round(time.monotonic()-started,3),
+                    })
                 if p.path=="/readyz":
                     try:
                         with control.connection() as cursor:
@@ -161,13 +189,13 @@ class DashboardAPI:
                     except ValueError:return self.send_json(400,{"error_code":"PAGINATION_INVALID","message":"invalid pagination","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 if p.path=="/openapi.json":
                     try:return self.send_json(200,json.loads(open("openapi/mission-control/openapi.json").read()))
-                    except Exception:return self.send_json(404,{"error":"openapi_missing"})
+                    except (OSError, json.JSONDecodeError):return self.send_json(404,{"error":"openapi_missing"})
                 # Every dashboard source is authenticated, not just mutating APIs.
                 # Only globally delegated Operator/Reviewer/Administrator may
                 # inspect the cross-tenant control plane. Viewer cannot enumerate
                 # unrelated tenants or workstation paths.
-                if p.path.startswith(PREFIX+"/"):
-                    if not self._principal("dashboard:read"):return
+                if p.path.startswith(PREFIX+"/") and not self._principal("dashboard:read"):
+                    return
                 if p.path==PREFIX+"/monitoring-lock":
                     return self.send_json(200,monitoring_lock_snapshot())
                 if p.path==PREFIX+"/monitoring-governance":
@@ -213,7 +241,7 @@ class DashboardAPI:
                             t=c.execute("select count(*) n,sum(certified) cert,avg(completion_percent) wip from atomic_tasks where repository=?",(repo,)).fetchone()
                             x=c.execute("select count(*) n,sum(case when worktree!='UNRESOLVED' and branch!='UNRESOLVED' and base_sha!='UNRESOLVED' then 1 else 0 end) ready from execution_contracts where repository=?",(repo,)).fetchone()
                             return self.send_json(200,{"repository":repo,"wip_percent":round(t["wip"] or 0,2),"certified_tasks":t["cert"] or 0,"total_tasks":t["n"] or 0,"execution_contracts":x["n"] or 0,"execution_ready":x["ready"] or 0})
-                        except Exception:return self.send_json(503,{"error":"launch_intelligence_not_initialized"})
+                        except (sqlite3.Error, ValueError, TypeError):return self.send_json(503,{"error":"launch_intelligence_not_initialized"})
                 if p.path==PREFIX+"/repository":
                     repo=q.get("repository",[None])[0]
                     if not repo:return self.send_json(400,{"error":"repository_required"})

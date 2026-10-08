@@ -33,3 +33,5 @@ are permitted. Staging certificate requires exact-SHA CI, independent reviews,
 gateway integration evidence and rollback checks; production remains NO-GO.
 
 Keycloak staging issuer authority: https://auth-staging.codestra.co/realms/codestra. Production uses a distinct issuer and must never reuse staging credentials.
+
+Staging CORS origin must equal https://dashboard.staging.internal.codestra.agency if browser Origin is present; never wildcard. Frontend PKCE must request dashboard.read and the Keycloak realm must issue that scope for the allowed UI client.
