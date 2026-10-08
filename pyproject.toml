@@ -12,6 +12,7 @@ dependencies = ["PyJWT[crypto]>=2.10,<3"]
 [project.optional-dependencies]
 temporal = ["temporalio>=1.8,<2"]
 dev = ["pytest>=8,<10", "ruff>=0.8,<1"]
+control-plane = ["psycopg2-binary>=2.9,<3"]
 
 [project.scripts]
 codestra-mission-control = "mission_control.cli:main"

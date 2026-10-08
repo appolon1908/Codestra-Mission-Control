@@ -1,13 +1,14 @@
 from __future__ import annotations
-from dataclasses import dataclass
+
 import os
-from typing import Callable
+from dataclasses import dataclass
+
 import jwt
 
 ROLE_PERMISSIONS={
  "Administrator":{"*"},
- "Operator":{"mission:read","mission:write","agent:assign","agent:stop","router:lease"},
- "Reviewer":{"mission:read","evidence:read","evidence:certify","review:approve","pr:link","agent:read"},
+ "Operator":{"mission:read","mission:write","agent:assign","agent:stop","router:lease","dashboard:read"},
+ "Reviewer":{"mission:read","evidence:read","evidence:certify","review:approve","pr:link","agent:read","dashboard:read"},
  "Viewer":{"mission:read","evidence:read","agent:read"},
  "Agent":{"agent:heartbeat","agent:checkpoint","evidence:submit","task:claim"},
 }

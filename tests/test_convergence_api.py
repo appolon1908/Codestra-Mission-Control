@@ -1,19 +1,23 @@
-import json,threading
-from urllib.request import Request,urlopen
-from mission_control.dashboard_api import DashboardAPI
-from mission_control.store import MissionStore
+import json
+import threading
+from urllib.request import Request, urlopen
+
 from mission_control.agent_registry import AgentRegistry
-from mission_control.oversight import OversightStore
+from mission_control.dashboard_api import DashboardAPI
 from mission_control.mission_graph import MissionGraphStore
-from mission_control.router_store import RouterStore
 from mission_control.mission_router import AtomicTask
+from mission_control.oversight import OversightStore
+from mission_control.router_store import RouterStore
+from mission_control.security import KeycloakVerifier
+from mission_control.store import MissionStore
+
 
 def setup(tmp_path,monkeypatch):
  monkeypatch.setenv("MISSION_CONTROL_AUTH_MODE","disabled")
  s=MissionStore(tmp_path/"db");s.initialize();AgentRegistry(s).initialize();OversightStore(s).initialize();MissionGraphStore(s).initialize();r=RouterStore(s);r.initialize()
  r.upsert_task(AtomicTask("T1","Repo","A","S","M",completion_percent=20,collision_keys=frozenset({"src/x"})))
  with s.connection() as c:c.execute("CREATE TABLE execution_contracts(task_id TEXT PRIMARY KEY,repository TEXT,stage TEXT,objective TEXT,worktree TEXT,branch TEXT,base_sha TEXT,writable_scope_json TEXT,readonly_dependencies_json TEXT,forbidden_scope_json TEXT,acceptance_json TEXT,evidence_json TEXT,api_operations_json TEXT,headers_json TEXT,revision INTEGER)");c.execute("INSERT INTO execution_contracts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",("T1","Repo","IMPLEMENTATION","code it","/w","mission/t1","a"*40,'["src/"]','[]','["main"]','["tests pass"]','["pytest"]','[]','[]',1))
- srv=DashboardAPI(s).server();threading.Thread(target=srv.serve_forever,daemon=True).start();return srv
+ srv=DashboardAPI(s,authorization=KeycloakVerifier(mode="disabled"),control_plane=False,allow_mutations=True).server();threading.Thread(target=srv.serve_forever,daemon=True).start();return srv
 
 def req(srv,path,method="GET",body=None):
  u=f"http://127.0.0.1:{srv.server_port}{path}";data=json.dumps(body).encode() if body is not None else None

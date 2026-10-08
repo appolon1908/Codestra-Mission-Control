@@ -1,0 +1,30 @@
+{
+  "schema": "codestra.mission-control.gateway-readonly.v1",
+  "state": "STAGING_CANDIDATE_NOT_ACTIVATED",
+  "production_go": false,
+  "external_effects_enabled": false,
+  "public_entrypoint": "Caddy",
+  "gateway": "Kong",
+  "backend": "Codestra-Mission-Control",
+  "path_prefix": "/platform/v1/dashboard/",
+  "methods": [
+    "GET",
+    "OPTIONS"
+  ],
+  "strip_path": false,
+  "jwt": {
+    "issuer": "https://auth-staging.codestra.co/realms/codestra",
+    "audience": "mission-control-backend",
+    "azp_allowlist": [
+      "mission-control-ui"
+    ],
+    "required_permission": "dashboard:read",
+    "algorithm": "RS256"
+  },
+  "security": {
+    "direct_public_listener": false,
+    "strip_identity_headers": true,
+    "deny_private_metrics": true,
+    "exact_sha_certification_required": true
+  }
+}

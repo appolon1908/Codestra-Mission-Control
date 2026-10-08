@@ -13,9 +13,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python -m pip install -e ".[dev]"
-      - run: ruff check src tests
+      - name: Ruff
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            mapfile -t files < <(
+              git diff --name-only --diff-filter=ACMR                 "${{ github.event.pull_request.base.sha }}" HEAD --                 'src/**/*.py' 'tests/**/*.py'
+            )
+            if (( ${#files[@]} )); then
+              python -m ruff check "${files[@]}"
+            else
+              echo "No changed Python files to lint."
+            fi
+          else
+            python -m ruff check src tests
+          fi
       - run: pytest -q
