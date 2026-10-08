@@ -10,6 +10,8 @@ from .realtime_events import RealtimeEvent, RealtimePublisher
 from .repository_sync import RepositorySyncStore
 from .repository_control import RepositoryControlCenter
 from .dashboard_contract import dashboard_contract
+from .openbao_read_model import snapshot as openbao_snapshot
+from .openbao_health import probe as openbao_health_probe
 from .monitoring_evidence import snapshot as monitoring_snapshot
 from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
 from .router_store import RouterStore
@@ -132,6 +134,16 @@ class DashboardAPI:
                     return self.send_json(200,dashboard_contract())
                 if p.path==PREFIX+"/health":
                     return self.send_json(200,{"status":"ok","service":"agent-brain-dashboard-api"})
+                if p.path==PREFIX+"/openbao/health":
+                    if not self._principal("mission:read"): return
+                    return self.send_json(200,openbao_health_probe())
+                if p.path==PREFIX+"/openbao":
+                    if not self._principal("mission:read"): return
+                    return self.send_json(200,openbao_snapshot(
+                        repo_control.rows(),
+                        model.repository("Codestra-OpenBao")["pr_summary"],
+                        router_store.tasks("Codestra-OpenBao"),
+                    ))
                 if p.path==PREFIX+"/repositories":
                     return self.send_json(200,{"repositories":repo_control.rows()})
                 if p.path==PREFIX+"/local-work":
