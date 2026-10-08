@@ -35,3 +35,39 @@ jobs:
             python -m ruff check src tests
           fi
       - run: pytest -q
+
+  required_control_plane:
+    # GitHub main-branch ruleset requires this exact check-run name.
+    name: codestra-control-plane
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: ${{ always() }}
+    steps:
+      - name: Require real lint and pytest job success
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+        shell: bash
+        run: |
+          if [[ "$TEST_RESULT" != "success" ]]; then
+            echo "::error::Mandatory Ruff/pytest job ended with $TEST_RESULT"
+            exit 1
+          fi
+          echo "Mandatory Ruff and full pytest job passed."
+
+  legacy_control_plane:
+    # The development/testing/staging/section ruleset requires this distinct name.
+    name: codestra/control-plane
+    runs-on: ubuntu-latest
+    needs: [required_control_plane]
+    if: ${{ always() }}
+    steps:
+      - name: Require the exact control-plane check to pass
+        env:
+          CONTROL_PLANE_RESULT: ${{ needs.required_control_plane.result }}
+        shell: bash
+        run: |
+          if [[ "$CONTROL_PLANE_RESULT" != "success" ]]; then
+            echo "::error::Mandatory control-plane check ended with $CONTROL_PLANE_RESULT"
+            exit 1
+          fi
+          echo "Control-plane check passed."
