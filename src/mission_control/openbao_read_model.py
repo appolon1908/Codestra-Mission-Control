@@ -5,7 +5,7 @@ secrets, vault configuration, unseal endpoints, or make release decisions.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 REPOSITORY = "Codestra-OpenBao"
 REPO_URL = "https://github.com/appolon1908/Codestra-OpenBao"
@@ -31,7 +31,7 @@ def snapshot(repo_rows: list[dict], pr_summary: dict, tasks: list) -> dict:
         })
     return {
         "repository": REPOSITORY,
-        "observed_at": datetime.now(timezone.utc).isoformat(),
+        "observed_at": datetime.now(UTC).isoformat(),
         "data_state": "OBSERVED" if match else "NO_REGISTRY_DATA",
         "registry": {
             "sync_state": match.get("sync_state", "UNKNOWN") if match else "UNKNOWN",
