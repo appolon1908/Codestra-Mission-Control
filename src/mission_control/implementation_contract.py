@@ -29,9 +29,7 @@ def tests_passed(tests: dict[str, Any]) -> bool:
         return True
     total = tests.get("total")
     failed = tests.get("failed")
-    if isinstance(total, int) and total > 0 and failed == 0:
-        return True
-    return False
+    return bool(isinstance(total, int) and total > 0 and failed == 0)
 
 
 def evaluate_implementation_proof(
