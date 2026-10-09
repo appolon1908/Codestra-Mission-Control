@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 import json
+
 
 class MissionGraphStore:
     def __init__(self,store): self.store=store

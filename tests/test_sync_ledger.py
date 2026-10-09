@@ -153,7 +153,7 @@ def test_cli_sync_observe_requires_lease_and_readback_reports_sources(tmp_path):
     assert decision["state"] == "BLOCKED"
     assert decision["missing"] == ["notion"]
     assert decision["reconciled"] == ["local", "linear", "github"]
-    notion = [s for s in decision["sources"] if s["surface"] == "notion"][0]
+    notion = next(s for s in decision["sources"] if s["surface"] == "notion")
     assert notion["freshness"] == "UNREACHABLE"
     assert notion["error"] == "HTTP503"
     assert notion["last_error_at"] is not None

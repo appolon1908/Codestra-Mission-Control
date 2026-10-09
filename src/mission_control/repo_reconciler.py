@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+
+from .realtime_events import RealtimeEvent, RealtimePublisher
 from .repository_sync import RepositorySyncStore
-from .realtime_events import RealtimeEvent,RealtimePublisher
+
 
 @dataclass(frozen=True)
 class RepoFacts:

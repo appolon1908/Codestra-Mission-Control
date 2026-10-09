@@ -1,6 +1,8 @@
 import pytest
+
 from mission_control.store import MissionStore
-from mission_control.work_authority import WorkAuthority,WorkItem,WorkType
+from mission_control.work_authority import WorkAuthority, WorkItem, WorkType
+
 
 def setup(tmp_path):
  s=MissionStore(tmp_path/"db");s.initialize();w=WorkAuthority(s);w.initialize();return w
@@ -15,7 +17,7 @@ def test_hierarchy_requires_canonical_parent(tmp_path):
  assert w.require_work("T")["parent_id"]=="D"
 def test_implementation_cannot_start_without_lane_authority(tmp_path):
  w=setup(tmp_path);w.publish(WorkItem("T","r","m",WorkType.ATOMIC_TASK,"task"))
- for args in (dict(branch=None,worktree="/w",base_sha="a"),dict(branch="main",worktree="/w",base_sha="a"),dict(branch="mission/t",worktree=None,base_sha="a"),dict(branch="mission/t",worktree="/w",base_sha=None)):
+ for args in ({"branch": None,"worktree": "/w","base_sha": "a"},{"branch": "main","worktree": "/w","base_sha": "a"},{"branch": "mission/t","worktree": None,"base_sha": "a"},{"branch": "mission/t","worktree": "/w","base_sha": None}):
   with pytest.raises(ValueError):w.validate_implementation_start("T",**args)
  w.validate_implementation_start("T",branch="mission/t",worktree="/w",base_sha="abc")
 def test_pr_cannot_bind_to_phantom_work(tmp_path):

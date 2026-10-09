@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import StrEnum
+
 
 class AuditVerdict(StrEnum):
     READY_FOR_IMPLEMENTATION="READY_FOR_IMPLEMENTATION"
