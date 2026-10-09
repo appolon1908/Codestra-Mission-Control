@@ -78,7 +78,7 @@ class DashboardAPI:
                 self.send_response(204)
                 self.send_header("Access-Control-Allow-Origin",approved)
                 self.send_header("Vary","Origin")
-                self.send_header("Access-Control-Allow-Methods","GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Methods","GET, POST, OPTIONS" if self.server.allow_mutations else "GET, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers","Content-Type, Authorization")
                 self.end_headers()
             def _allowed_origin(self):
