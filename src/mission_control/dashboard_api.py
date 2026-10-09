@@ -1,23 +1,29 @@
 from __future__ import annotations
+
 import json
-from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
-from urllib.parse import parse_qs,urlparse
-from .dashboard_read_model import DashboardReadModel
+import logging
+import os
+import re
+import subprocess
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
 from .agent_registry import AgentRegistry
-from .oversight import OversightStore
 from .assignments import AssignmentStore
-from .realtime_events import RealtimeEvent, RealtimePublisher
-from .repository_sync import RepositorySyncStore
-from .repository_control import RepositoryControlCenter
+from .convergence_store import ConvergenceStore
 from .dashboard_contract import dashboard_contract
+from .dashboard_read_model import DashboardReadModel
+from .discovery_engine import DiscoveryEngine
+from .local_work_discovery import LocalWorkDiscovery
 from .monitoring_evidence import snapshot as monitoring_snapshot
 from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
+from .oversight import OversightStore
+from .realtime_events import RealtimeEvent, RealtimePublisher
+from .repository_control import RepositoryControlCenter
+from .repository_sync import RepositorySyncStore
 from .router_store import RouterStore
-from .local_work_discovery import LocalWorkDiscovery
-from .convergence_store import ConvergenceStore
-from .security import KeycloakVerifier,AuthError
-from .discovery_engine import DiscoveryEngine
-import os,re,subprocess,time
+from .security import AuthError, KeycloakVerifier
 
 PREFIX="/platform/v1/dashboard"
 
@@ -60,7 +66,7 @@ class DashboardAPI:
                         body=self._body()
                         if not body.get("product_goal") or not body.get("business_reason"):return self.send_json(400,{"error_code":"MISSION_FIELDS_REQUIRED","message":"product_goal and business_reason required","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                         return self.send_json(201,convergence.create_mission(body))
-                    except Exception as exc:return self.send_json(400,{"error_code":"MISSION_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                    except Exception as exc:return self.send_json(400,{"error_code":"MISSION_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})  # noqa: BLE001 - API failure isolation boundary
                 m=re.fullmatch(r"/api/v1/tasks/([^/]+)/lease",p.path)
                 if m:
                     principal=self._principal_any("router:lease","task:claim")
@@ -91,7 +97,7 @@ class DashboardAPI:
                         body=self._body()
                         if not re.fullmatch(r"[0-9a-f]{40}",body.get("exact_sha","")):raise ValueError("exact_sha_invalid")
                         result=convergence.certify(body);return self.send_json(201 if result["status"]=="CERTIFIED" else 422,result)
-                    except Exception as exc:return self.send_json(422,{"error_code":"EVIDENCE_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
+                    except Exception as exc:return self.send_json(422,{"error_code":"EVIDENCE_INVALID","message":str(exc),"timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})  # noqa: BLE001 - API failure isolation boundary
                 if p.path=="/platform/v1/assignments":
                     if not self._principal_any("agent:assign","task:claim"):return
                     length=int(self.headers.get("Content-Length","0"))
@@ -103,7 +109,8 @@ class DashboardAPI:
                         claim=assignments.claim(**{k:body[k] for k in required})
                         agents.heartbeat(body["agent_id"],state="CLAIMED",repository=body["repository"],area_id=body["area"],subarea_id=body["subarea"],task_id=body["task_id"],mission_id=body.get("mission_id"),workstation="UBUNTU_DESKTOP")
                         try: publisher.publish_http(RealtimeEvent.create("mission.task.claimed",{"task_id":body["task_id"],"agent_id":body["agent_id"],"repository":body["repository"]}))
-                        except Exception: pass
+                        except Exception:
+                            logging.getLogger(__name__).exception("Realtime event publication failed")
                         return self.send_json(201,claim.__dict__)
                     except ValueError as exc:
                         return self.send_json(409,{"error":str(exc)})
@@ -112,7 +119,7 @@ class DashboardAPI:
                 p=urlparse(self.path);q=parse_qs(p.query)
                 if p.path=="/healthz":
                     try: sha=subprocess.check_output(["git","rev-parse","HEAD"],cwd=os.getcwd(),text=True).strip()
-                    except Exception: sha="0"*40
+                    except Exception: sha="0"*40  # noqa: BLE001 - API failure isolation boundary
                     return self.send_json(200,{"status":"OK","service_name":"agent-brain-backend","active_sha":sha,"uptime_seconds":round(time.monotonic()-started,3)})
                 if p.path=="/api/v1/repositories/discover":
                     if not self._principal("mission:read"):return
@@ -123,7 +130,7 @@ class DashboardAPI:
                     except ValueError:return self.send_json(400,{"error_code":"PAGINATION_INVALID","message":"invalid pagination","timestamp":__import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()})
                 if p.path=="/openapi.json":
                     try:return self.send_json(200,json.loads(open("openapi/mission-control/openapi.json").read()))
-                    except Exception:return self.send_json(404,{"error":"openapi_missing"})
+                    except Exception:return self.send_json(404,{"error":"openapi_missing"})  # noqa: BLE001 - API failure isolation boundary
                 if p.path==PREFIX+"/monitoring-lock":
                     return self.send_json(200,monitoring_lock_snapshot())
                 if p.path==PREFIX+"/monitoring-governance":
@@ -162,7 +169,7 @@ class DashboardAPI:
                                 ec=c.execute("select stage,worktree,branch,base_sha,objective from execution_contracts where task_id=?",(t.task_id,)).fetchone()
                                 if ec:x["execution_contract"]=dict(ec);x["execution_ready"]=all(ec[k] not in (None,'','UNRESOLVED') for k in ('worktree','branch','base_sha'))
                                 else:x["execution_ready"]=False
-                            except Exception:x["execution_ready"]=False
+                            except Exception:x["execution_ready"]=False  # noqa: BLE001 - API failure isolation boundary
                             out.append(x)
                     return self.send_json(200,{"repository":repo,"tasks":out})
                 if p.path==PREFIX+"/task":
@@ -182,7 +189,7 @@ class DashboardAPI:
                             t=c.execute("select count(*) n,sum(certified) cert,avg(completion_percent) wip from atomic_tasks where repository=?",(repo,)).fetchone()
                             x=c.execute("select count(*) n,sum(case when worktree!='UNRESOLVED' and branch!='UNRESOLVED' and base_sha!='UNRESOLVED' then 1 else 0 end) ready from execution_contracts where repository=?",(repo,)).fetchone()
                             return self.send_json(200,{"repository":repo,"wip_percent":round(t["wip"] or 0,2),"certified_tasks":t["cert"] or 0,"total_tasks":t["n"] or 0,"execution_contracts":x["n"] or 0,"execution_ready":x["ready"] or 0})
-                        except Exception:return self.send_json(503,{"error":"launch_intelligence_not_initialized"})
+                        except Exception:return self.send_json(503,{"error":"launch_intelligence_not_initialized"})  # noqa: BLE001 - API failure isolation boundary
                 if p.path==PREFIX+"/repository":
                     repo=q.get("repository",[None])[0]
                     if not repo:return self.send_json(400,{"error":"repository_required"})

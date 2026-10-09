@@ -1,5 +1,6 @@
 from mission_control.service_catalog import ServiceCatalog
 
+
 def test_realtime_gateway_has_dedicated_noncolliding_endpoint():
  s=ServiceCatalog().get("realtime-gateway")
  assert s["health"]=="http://127.0.0.1:8791/healthz"

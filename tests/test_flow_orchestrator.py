@@ -1,7 +1,8 @@
+from mission_control.continuous_flow import FlowAction
 from mission_control.flow_orchestrator import FlowOrchestrator
 from mission_control.lane_taxonomy import AgentLane
-from mission_control.continuous_flow import FlowAction
 from mission_control.mission_router import AtomicTask, RankedTask
+
 
 def test_implementation_completion_hands_off_and_requests_next_task():
     h=FlowOrchestrator().on_checkpoint(task_id="T1",lane=AgentLane.IMPLEMENTATION,implementation_done=True)

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 MONITORING_LOCK={
  "canonical_path":"/home/codestra/Worktrees/Monitoring-Active-20260926/<repo>",
  "branch":"governance/single-active-lane-20260926",

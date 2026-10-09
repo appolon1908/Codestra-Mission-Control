@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from collections import defaultdict
+
 
 class DashboardReadModel:
     def __init__(self, store): self.store=store

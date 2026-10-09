@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from typing import Iterable
 
 from .mission_router import AgentCapacity, AtomicTask, MissionRouter
 
