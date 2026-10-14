@@ -1,6 +1,8 @@
 from mission_control.implementation_contract import (
     ImplementationExecutionState,
     evaluate_implementation_proof,
+)
+from mission_control.implementation_contract import (
     tests_passed as implementation_tests_passed,
 )
 

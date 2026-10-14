@@ -1,6 +1,7 @@
 from mission_control.mission_graph import MissionGraphStore
 from mission_control.store import MissionStore
 
+
 def setup(tmp_path):
  s=MissionStore(tmp_path/"db");s.initialize();g=MissionGraphStore(s);g.initialize();return g
 

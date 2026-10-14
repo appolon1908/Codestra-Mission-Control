@@ -2,6 +2,7 @@ from mission_control.dashboard_read_model import DashboardReadModel
 from mission_control.mission_graph import MissionGraphStore
 from mission_control.store import MissionStore
 
+
 def test_dashboard_drills_repo_to_task_and_pr(tmp_path):
  s=MissionStore(tmp_path/"db");s.initialize();g=MissionGraphStore(s);g.initialize()
  g.add_node("area","Middleware-","AREA","API")

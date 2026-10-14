@@ -1,7 +1,8 @@
 from __future__ import annotations
-from dataclasses import dataclass
+
 import os
-from typing import Callable
+from dataclasses import dataclass
+
 import jwt
 
 ROLE_PERMISSIONS={
@@ -25,7 +26,10 @@ class Principal:
 
 class KeycloakVerifier:
  def __init__(self,issuer:str|None=None,audience:str|None=None,azp:set[str]|None=None,mode:str|None=None):
-  self.mode=(mode or os.getenv("MISSION_CONTROL_AUTH_MODE","disabled")).lower()
+  self.mode=(mode or os.getenv("MISSION_CONTROL_AUTH_MODE","required")).lower()
+  if self.mode not in {"required","disabled"}: raise RuntimeError("unknown Mission Control auth mode")
+  if os.getenv("MISSION_CONTROL_ENV","").strip().lower() in {"staging","production"} and self.mode!="required":
+   raise RuntimeError("Mission Control authentication cannot be disabled outside development")
   self.issuer=(issuer or os.getenv("MISSION_CONTROL_JWT_ISSUER","")).rstrip("/")
   self.audience=audience or os.getenv("MISSION_CONTROL_JWT_AUDIENCE","mission-control-backend")
   self.allowed_azp=azp or {x for x in os.getenv("MISSION_CONTROL_ALLOWED_AZP","mission-control-ui,websocket-gateway").split(",") if x}

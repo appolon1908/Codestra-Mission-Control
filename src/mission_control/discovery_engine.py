@@ -1,8 +1,13 @@
 from __future__ import annotations
-import json,threading,time
-from datetime import UTC,datetime
+
+import json
+import logging
+import threading
+from datetime import UTC, datetime
 from pathlib import Path
+
 from .local_work_discovery import LocalWorkDiscovery
+
 
 class DiscoveryEngine:
  def __init__(self,discovery=None,interval_seconds=30,snapshot_path=None):
@@ -22,7 +27,8 @@ class DiscoveryEngine:
   def run():
    while not self._stop.is_set():
     try:self.scan_once()
-    except Exception:pass
+    except Exception:
+     logging.getLogger(__name__).exception("Discovery scan failed")
     self._stop.wait(self.interval)
   self._thread=threading.Thread(target=run,name="local-work-discovery",daemon=True);self._thread.start()
  def stop(self):self._stop.set()

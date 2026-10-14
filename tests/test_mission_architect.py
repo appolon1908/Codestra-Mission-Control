@@ -1,5 +1,7 @@
 import pytest
-from mission_control.mission_architect import MissionArchitect,MissionBrief
+
+from mission_control.mission_architect import MissionArchitect, MissionBrief
+
 
 def brief():
  return MissionBrief("M1","Middleware-","API","Commands","Implement command API",

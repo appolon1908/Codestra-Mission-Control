@@ -1,5 +1,6 @@
-from mission_control.store import MissionStore
 from mission_control.repository_sync import RepositorySyncStore
+from mission_control.store import MissionStore
+
 
 def test_repo_sync_state_is_durable_and_updates(tmp_path):
  s=MissionStore(tmp_path/"db");s.initialize();r=RepositorySyncStore(s);r.initialize()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 class RepositoryControlCenter:
     def __init__(self, store):
         self.store=store
