@@ -208,3 +208,31 @@ def test_mutations_denied_in_dashboard_even_with_operator(dashboard):
         status, data, _ = dashboard(path, method="POST")
         assert status == 403
         assert data["error_code"] == "DASHBOARD_MUTATIONS_DISABLED"
+
+
+def test_future_agent_heartbeat_is_not_active(monkeypatch):
+    from contextlib import contextmanager
+
+    future = datetime.now(UTC) + timedelta(minutes=5)
+    row = {
+        "agent": "fixture-agent", "product": "Fixture", "workstation_id": "fixture-ws",
+        "current_atomic_task": None, "branch": "task/fixture", "heartbeat_at": future,
+        "lease_state": "ACTIVE",
+    }
+
+    class Cursor:
+        def execute(self, *args):
+            pass
+
+        def fetchall(self):
+            return [row]
+
+    @contextmanager
+    def connection():
+        yield Cursor()
+
+    model = ControlPlaneReadModel(dsn="")
+    monkeypatch.setattr(model, "connection", connection)
+    agent = model.agents()[0]
+    assert agent["live"] is False
+    assert agent["state"] == "OFFLINE"

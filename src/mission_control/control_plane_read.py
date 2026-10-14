@@ -62,6 +62,7 @@ class ControlPlaneReadModel:
                        count(w.workstation_id) FILTER (WHERE w.status = 'CERTIFIED')::integer AS certified_workstations,
                        count(w.workstation_id) FILTER (
                            WHERE w.agent IS NOT NULL AND w.heartbeat_at > now() - interval '90 seconds'
+                             AND w.heartbeat_at <= now()
                              AND w.lease_state = 'ACTIVE'
                        )::integer AS active_agents
                 FROM products p
@@ -196,7 +197,7 @@ class ControlPlaneReadModel:
                 "state": (
                     "ACTIVE"
                     if r["heartbeat_at"] is not None
-                    and (now - r["heartbeat_at"]).total_seconds() <= 90
+                    and 0 <= (now - r["heartbeat_at"]).total_seconds() <= 90
                     and r["lease_state"] == "ACTIVE"
                     else "OFFLINE"
                 ),
