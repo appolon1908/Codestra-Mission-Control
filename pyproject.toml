@@ -7,7 +7,7 @@ name = "codestra-mission-control"
 version = "0.1.0"
 description = "Durable mission, lease, handoff, approval and agent orchestration control plane"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["PyJWT[crypto]>=2.10,<3"]
 
 [project.optional-dependencies]
 temporal = ["temporalio>=1.8,<2"]
@@ -15,6 +15,7 @@ dev = ["pytest>=8,<10", "ruff>=0.8,<1"]
 
 [project.scripts]
 codestra-mission-control = "mission_control.cli:main"
+agent-brain = "mission_control.runtime:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
