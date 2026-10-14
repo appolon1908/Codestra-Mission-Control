@@ -3,6 +3,17 @@
   "lease_ttl_seconds": 600,
   "heartbeat_target_seconds": 120,
   "watchdog_interval_seconds": 30,
+  "escalation": {
+    "stale_heartbeat_seconds": 300,
+    "escalate_after_seconds": 900,
+    "owner_decision_after_seconds": 3600,
+    "external_delivery": "DISABLED"
+  },
+  "runtime_api": {
+    "host": "127.0.0.1",
+    "port": 8787,
+    "allow_dispatch": false
+  },
   "workers": [
     {"agent_id": "codex-01", "provider": "codex"},
     {"agent_id": "claude-01", "provider": "claude"},

@@ -65,7 +65,7 @@ def test_activity_detects_expired_writer_for_takeover(tmp_path):
     assert "expired" in decision["reason"]
 
 
-def test_review_state_requests_review(tmp_path):
+def test_review_state_without_proof_requests_implementation_dispatch(tmp_path):
     db = tmp_path / "mission.db"
     store = MissionStore(db)
     store.initialize()
@@ -80,9 +80,53 @@ def test_review_state_requests_review(tmp_path):
 
     activities = MissionActivities(db)
     decision = asyncio.run(activities.evaluate_mission("PAS-184"))
-    assert decision["action"] == "REVIEW"
-    result = asyncio.run(activities.request_review("PAS-184"))
-    assert result["status"] == "REVIEW_REQUESTED"
+    assert decision["action"] == "REASSIGN"
+    result = asyncio.run(activities.dispatch_next_agent("PAS-184"))
+    assert result["status"] == "DISPATCH_REQUESTED"
+
+
+def test_proven_review_state_requests_successor_implementation(tmp_path):
+    db = tmp_path / "mission.db"
+    store = MissionStore(db)
+    store.initialize()
+    store.upsert_mission(
+        Mission(
+            "PAS-184B",
+            "repo",
+            "adapter",
+            status=MissionStatus.IN_REVIEW,
+        )
+    )
+    store.start_implementation_execution(
+        execution_id="impl-184b",
+        mission_id="PAS-184B",
+        agent_id="codex-184b",
+        workstation="codestra-desktop",
+        provider="codex",
+        branch="mission/pas184b",
+        worktree="/tmp/pas184b",
+    )
+    store.record_implementation_proof(
+        "impl-184b",
+        implementation_files=["src/adapter.py"],
+        api_endpoints=[],
+        tests={"passed": True},
+        local_commit_sha="abc",
+        pushed_branch_sha="abc",
+        pr_number=184,
+        pr_url="https://github.com/example/repo/pull/184",
+        pr_head_sha="abc",
+    )
+
+    activities = MissionActivities(db)
+    decision = asyncio.run(activities.evaluate_mission("PAS-184B"))
+    assert decision["action"] == "NEXT_IMPLEMENTATION"
+    result = asyncio.run(
+        activities.request_successor_implementation("PAS-184B")
+    )
+    assert result["status"] == "SUCCESSOR_IMPLEMENTATION_REQUESTED"
+    event_types = [row["event_type"] for row in store.events("PAS-184B")]
+    assert "SUCCESSOR_IMPLEMENTATION_REQUESTED" in event_types
 
 
 def test_production_approval_is_not_auto_recorded(tmp_path):

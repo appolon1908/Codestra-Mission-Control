@@ -103,6 +103,20 @@ class MissionActivities:
             "status": "REVIEW_REQUESTED",
         }
 
+    async def request_successor_implementation(
+        self,
+        mission_id: str,
+    ) -> dict[str, str]:
+        self._event(
+            mission_id,
+            "SUCCESSOR_IMPLEMENTATION_REQUESTED",
+            payload={"source": "temporal", "implementation_only": True},
+        )
+        return {
+            "mission_id": mission_id,
+            "status": "SUCCESSOR_IMPLEMENTATION_REQUESTED",
+        }
+
     async def workflow_signal(
         self,
         payload: dict[str, Any],
@@ -127,6 +141,9 @@ if activity is not None:
     MissionActivities.request_review = activity.defn(
         name="request_review"
     )(MissionActivities.request_review)
+    MissionActivities.request_successor_implementation = activity.defn(
+        name="request_successor_implementation"
+    )(MissionActivities.request_successor_implementation)
     MissionActivities.workflow_signal = activity.defn(
         name="workflow_signal"
     )(MissionActivities.workflow_signal)
@@ -150,6 +167,7 @@ async def run_worker(config: TemporalRuntimeConfig) -> None:
             activities.evaluate_mission,
             activities.dispatch_next_agent,
             activities.request_review,
+            activities.request_successor_implementation,
             activities.workflow_signal,
         ],
     )
