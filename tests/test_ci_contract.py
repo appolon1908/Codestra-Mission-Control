@@ -41,3 +41,9 @@ def test_ci_constraints_pin_the_runtime_and_test_dependency_graph():
     assert pins["ruff"] == "0.16.10"
     assert pins["pytest"] == "9.1.1"
     assert {"PyJWT", "cryptography", "setuptools", "wheel", "cffi"} <= pins.keys()
+
+
+def test_ci_does_not_present_pytest_as_controller_certification():
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    assert "name: codestra-control-plane" not in workflow
+    assert "name: codestra/control-plane" not in workflow
