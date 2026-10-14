@@ -15,6 +15,7 @@ class ControllerAction(StrEnum):
     CONTINUE = "CONTINUE"
     REASSIGN = "REASSIGN"
     REVIEW = "REVIEW"
+    NEXT_IMPLEMENTATION = "NEXT_IMPLEMENTATION"
     COMPLETE = "COMPLETE"
 
 
@@ -41,7 +42,18 @@ class MissionController:
             return ControllerDecision(ControllerAction.COMPLETE, "mission already complete")
 
         if status in {MissionStatus.IN_REVIEW, MissionStatus.MERGE_READY}:
-            return ControllerDecision(ControllerAction.REVIEW, "external review/certification required")
+            implementation = self.store.latest_implementation_execution(mission_id)
+            if not implementation or implementation["state"] != "PROVEN":
+                return ControllerDecision(
+                    ControllerAction.REASSIGN,
+                    "review state lacks PROVEN implementation delivery; "
+                    "assign an implementation agent, not a review-only agent",
+                )
+            return ControllerDecision(
+                ControllerAction.NEXT_IMPLEMENTATION,
+                "implementation delivery is PROVEN; external review/CI continues "
+                "independently while the coding agent moves to the next implementation mission",
+            )
 
         if lease:
             from datetime import datetime

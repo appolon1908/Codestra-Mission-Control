@@ -286,9 +286,14 @@ class ProcessAgentAdapter(ABC):
         command: str,
         candidates: list[Path],
     ) -> str:
-        found = shutil.which(command)
-        if found:
-            return found
+        names = [command]
+        if os.name != "nt" and command.lower().endswith(".exe"):
+            # Ubuntu/macOS installs expose the bare CLI name on PATH.
+            names.insert(0, command[: -len(".exe")])
+        for name in names:
+            found = shutil.which(name)
+            if found:
+                return found
         for candidate in candidates:
             if candidate.is_file():
                 return str(candidate)

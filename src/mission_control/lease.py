@@ -151,6 +151,8 @@ class LeaseManager:
         return expires.isoformat()
 
     def release(self, mission_id: str, agent_id: str, *, next_status: MissionStatus) -> None:
+        if self.store.get_mission(mission_id):
+            self.store.require_transition(mission_id, next_status)
         with self.store.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             lease = conn.execute(
@@ -186,6 +188,13 @@ class LeaseManager:
                 (now,),
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def is_owner(self, mission_id: str, agent_id: str) -> bool:
+        """True only while ``agent_id`` holds an unexpired lease on the mission."""
+        lease = self.current(mission_id)
+        if not lease or lease["agent_id"] != agent_id:
+            return False
+        return datetime.fromisoformat(lease["expires_at"]) > _now()
 
     def current(self, mission_id: str) -> dict | None:
         with self.store.connection() as conn:
