@@ -269,6 +269,33 @@ class MissionStore:
                     PRIMARY KEY (node_id, provider)
                 );
 
+                CREATE TABLE IF NOT EXISTS inventory_scans (
+                    scan_id TEXT PRIMARY KEY,
+                    scanned_at TEXT NOT NULL,
+                    complete INTEGER NOT NULL,
+                    summary_json TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS inventory_observations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scan_id TEXT NOT NULL REFERENCES inventory_scans(scan_id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL,
+                    subject_key TEXT NOT NULL,
+                    repository TEXT,
+                    status TEXT NOT NULL,
+                    flags_json TEXT NOT NULL,
+                    details_json TEXT NOT NULL,
+                    error_code TEXT,
+                    error_message TEXT,
+                    observed_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_inventory_observations_subject
+                    ON inventory_observations(kind, subject_key, id);
+
+                CREATE INDEX IF NOT EXISTS idx_inventory_observations_scan
+                    ON inventory_observations(scan_id, id);
+
                 CREATE INDEX IF NOT EXISTS idx_events_mission
                     ON events(mission_id, id);
                 CREATE INDEX IF NOT EXISTS idx_head_evidence_mission
@@ -826,12 +853,14 @@ class MissionStore:
                     _iso_now(),
                 ),
             )
+            checkpoint_id = int(cursor.lastrowid)
             self._event(
                 conn,
                 mission_id,
                 "CHECKPOINT_RECORDED",
                 agent_id,
                 {
+                    "checkpoint_id": checkpoint_id,
                     "state": state,
                     "head_sha": head_sha,
                     "dirty_count": dirty_count,
@@ -840,7 +869,7 @@ class MissionStore:
                 },
             )
             conn.execute("COMMIT")
-            return int(cursor.lastrowid)
+            return checkpoint_id
 
     def record_surface_observation(
         self,
@@ -1271,134 +1300,6 @@ class MissionStore:
             "reasons": reasons,
         }
 
-    def upsert_worker_node(self, node_id: str, capabilities: dict) -> None:
-        now = _iso_now()
-        with self.connection() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            conn.execute(
-                """
-                INSERT INTO worker_nodes (
-                    node_id, hostname, os, lanes_json, capabilities_json,
-                    production_effects_enabled, registered_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(node_id) DO UPDATE SET
-                    hostname=excluded.hostname,
-                    os=excluded.os,
-                    lanes_json=excluded.lanes_json,
-                    capabilities_json=excluded.capabilities_json,
-                    production_effects_enabled=excluded.production_effects_enabled,
-                    updated_at=excluded.updated_at
-                """,
-                (
-                    node_id,
-                    capabilities["hostname"],
-                    capabilities["os"],
-                    json.dumps(capabilities["lanes"]),
-                    json.dumps(capabilities, sort_keys=True),
-                    int(bool(capabilities.get("production_effects_enabled"))),
-                    now,
-                    now,
-                ),
-            )
-            self._event(
-                conn,
-                f"node:{node_id}",
-                "WORKER_NODE_REGISTERED",
-                None,
-                {
-                    "lanes": capabilities["lanes"],
-                    "providers": capabilities.get("providers", []),
-                },
-            )
-            conn.execute("COMMIT")
-
-    def record_worker_heartbeat(self, node_id: str, at: str) -> bool:
-        with self.connection() as conn:
-            changed = conn.execute(
-                "UPDATE worker_nodes SET last_heartbeat_at=? WHERE node_id=?",
-                (at, node_id),
-            ).rowcount
-            return bool(changed)
-
-    def record_provider_auth(self, node_id: str, status: dict) -> None:
-        with self.connection() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            conn.execute(
-                """
-                INSERT INTO worker_provider_auth (
-                    node_id, provider, authenticated, auth_method, exit_code,
-                    detail, checked_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(node_id, provider) DO UPDATE SET
-                    authenticated=excluded.authenticated,
-                    auth_method=excluded.auth_method,
-                    exit_code=excluded.exit_code,
-                    detail=excluded.detail,
-                    checked_at=excluded.checked_at
-                """,
-                (
-                    node_id,
-                    status["provider"],
-                    int(bool(status["authenticated"])),
-                    status.get("auth_method"),
-                    status.get("exit_code"),
-                    status.get("detail"),
-                    status["checked_at"],
-                ),
-            )
-            self._event(
-                conn,
-                f"node:{node_id}",
-                "WORKER_PROVIDER_AUTH_RECORDED",
-                None,
-                {
-                    "provider": status["provider"],
-                    "authenticated": bool(status["authenticated"]),
-                },
-            )
-            conn.execute("COMMIT")
-
-    @staticmethod
-    def _worker_node_payload(row: sqlite3.Row) -> dict:
-        item = dict(row)
-        item["lanes"] = json.loads(item.pop("lanes_json"))
-        item["capabilities"] = json.loads(item.pop("capabilities_json"))
-        item["production_effects_enabled"] = bool(item["production_effects_enabled"])
-        return item
-
-    def get_worker_node(self, node_id: str) -> dict | None:
-        with self.connection() as conn:
-            row = conn.execute(
-                "SELECT * FROM worker_nodes WHERE node_id=?",
-                (node_id,),
-            ).fetchone()
-        return self._worker_node_payload(row) if row else None
-
-    def list_worker_nodes(self) -> list[dict]:
-        with self.connection() as conn:
-            rows = list(conn.execute("SELECT * FROM worker_nodes ORDER BY node_id"))
-        return [self._worker_node_payload(row) for row in rows]
-
-    def list_provider_auth(self, node_id: str) -> list[dict]:
-        with self.connection() as conn:
-            rows = list(
-                conn.execute(
-                    """
-                    SELECT provider, authenticated, auth_method, exit_code, detail, checked_at
-                    FROM worker_provider_auth
-                    WHERE node_id=?
-                    ORDER BY provider
-                    """,
-                    (node_id,),
-                )
-            )
-        items = [dict(row) for row in rows]
-        for item in items:
-            item["authenticated"] = bool(item["authenticated"])
-        return items
-
     def list_leases(self) -> list[sqlite3.Row]:
         with self.connection() as conn:
             return list(conn.execute("SELECT * FROM leases ORDER BY mission_id"))
@@ -1818,6 +1719,81 @@ class MissionStore:
         for item in items:
             item["authenticated"] = bool(item["authenticated"])
         return items
+
+    def record_inventory_scan(
+        self,
+        scan_id: str,
+        *,
+        scanned_at: str,
+        complete: bool,
+        summary: dict,
+        observations: list[dict],
+    ) -> None:
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT INTO inventory_scans (scan_id, scanned_at, complete, summary_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (scan_id, scanned_at, int(complete), json.dumps(summary, sort_keys=True)),
+            )
+            conn.executemany(
+                """
+                INSERT INTO inventory_observations (
+                    scan_id, kind, subject_key, repository, status, flags_json,
+                    details_json, error_code, error_message, observed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        scan_id,
+                        item["kind"],
+                        item["key"],
+                        item.get("repository"),
+                        item["status"],
+                        json.dumps(list(item.get("flags") or []), sort_keys=True),
+                        json.dumps(item.get("details") or {}, sort_keys=True),
+                        (item.get("error") or {}).get("code"),
+                        (item.get("error") or {}).get("message"),
+                        item["observed_at"],
+                    )
+                    for item in observations
+                ],
+            )
+            conn.execute("COMMIT")
+
+    def latest_inventory_scan(self) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                "SELECT * FROM inventory_scans ORDER BY scanned_at DESC, rowid DESC LIMIT 1"
+            ).fetchone()
+
+    def inventory_observations(self, scan_id: str) -> list[sqlite3.Row]:
+        with self.connection() as conn:
+            return list(
+                conn.execute(
+                    "SELECT * FROM inventory_observations WHERE scan_id=? ORDER BY id",
+                    (scan_id,),
+                )
+            )
+
+    def last_verified_inventory_observation(
+        self,
+        kind: str,
+        subject_key: str,
+    ) -> sqlite3.Row | None:
+        with self.connection() as conn:
+            return conn.execute(
+                """
+                SELECT * FROM inventory_observations
+                WHERE kind=? AND subject_key=? AND error_code IS NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (kind, subject_key),
+            ).fetchone()
 
     def events(self, mission_id: str) -> list[sqlite3.Row]:
         with self.connection() as conn:

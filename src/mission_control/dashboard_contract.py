@@ -15,4 +15,7 @@ DASHBOARD_ENDPOINTS={
  "watchdog_snapshot":{"method":"GET","path":"/platform/v1/watchdog/snapshot","ui":"Runtime health/leases/blockers"},
  "worker_nodes":{"method":"GET","path":"/platform/v1/worker-nodes","ui":"Workstations/agents"},
 }
-def dashboard_contract():return {"version":"v1","endpoints":DASHBOARD_ENDPOINTS}
+
+
+def dashboard_contract():
+    return {"version": "v1", "endpoints": DASHBOARD_ENDPOINTS}

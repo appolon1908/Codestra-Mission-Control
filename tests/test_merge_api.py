@@ -81,18 +81,28 @@ def test_full_merge_coordination_flow_over_http(api):
     )
     assert status == 200 and body["head_sha"] == HEAD_A
     store.record_checkpoint(
-        MISSION, "builder-1", "PUSHED", head_sha=HEAD_A, dirty_count=0, tests={},
-        blockers=[], next_task_requested=False,
+        MISSION,
+        "builder-1",
+        "PUSHED",
+        head_sha=HEAD_A,
+        dirty_count=0,
+        tests={},
+        blockers=[],
+        next_task_requested=False,
     )
 
     status, body, _ = call(
-        base, "POST", f"{mission}/evidence",
+        base,
+        "POST",
+        f"{mission}/evidence",
         {"role": "reviewer", "head_sha": HEAD_A, "actor": "builder-1", "verdict": "accepted"},
     )
     assert (status, body["error"]) == (409, "evidence_rejected")
     for role, actor in (("REVIEWER", "reviewer-1"), ("VERIFIER", "verifier-1")):
         status, body, _ = call(
-            base, "POST", f"{mission}/evidence",
+            base,
+            "POST",
+            f"{mission}/evidence",
             {"role": role, "head_sha": HEAD_A, "actor": actor, "verdict": "ACCEPTED"},
         )
         assert status == 201, body
@@ -118,8 +128,10 @@ def test_full_merge_coordination_flow_over_http(api):
 def test_http_input_validation(api):
     store, base = api
     mission = f"{PREFIX}/missions/{MISSION}"
-    assert call(base, "POST", f"{PREFIX}/missions/NOPE/head",
-                {"head_sha": HEAD_A, "actor": "x"})[0] == 404
+    assert (
+        call(base, "POST", f"{PREFIX}/missions/NOPE/head", {"head_sha": HEAD_A, "actor": "x"})[0]
+        == 404
+    )
     assert call(base, "POST", f"{mission}/head", {"head_sha": "short", "actor": "x"})[0] == 400
     assert call(base, "POST", f"{mission}/head", {"head_sha": HEAD_A})[1]["error"] == (
         "missing_fields"
@@ -158,31 +170,85 @@ def _cli(db, *args):
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
     return subprocess.run(
         [sys.executable, "-m", "mission_control.cli", "--db", str(db), *args],
-        env=env, text=True, capture_output=True, check=False,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
     )
 
 
 def test_cli_merge_gate_exit_codes(tmp_path):
     db = tmp_path / "mission.db"
-    assert _cli(db, "create-mission", "--mission", MISSION, "--repository", "r",
-                "--goal", "g").returncode == 0
+    assert (
+        _cli(
+            db, "create-mission", "--mission", MISSION, "--repository", "r", "--goal", "g"
+        ).returncode
+        == 0
+    )
     assert _cli(db, "claim", "--mission", MISSION, "--agent", "builder-1").returncode == 0
 
-    blocked = _cli(db, "release", "--mission", MISSION, "--agent", "builder-1",
-                   "--status", "COMPLETE")
+    blocked = _cli(
+        db, "release", "--mission", MISSION, "--agent", "builder-1", "--status", "COMPLETE"
+    )
     assert blocked.returncode == 2
     assert json.loads(blocked.stdout)["error"] == "completion_blocked"
 
-    assert _cli(db, "record-head", "--mission", MISSION, "--head-sha", HEAD_A,
-                "--actor", "builder-1").returncode == 0
-    assert _cli(db, "checkpoint", "--mission", MISSION, "--agent", "builder-1", "--state",
-                "PUSHED", "--head-sha", HEAD_A, "--dirty-count", "0").returncode == 0
-    self_review = _cli(db, "record-evidence", "--mission", MISSION, "--role", "REVIEWER",
-                       "--head-sha", HEAD_A, "--actor", "builder-1", "--verdict", "ACCEPTED")
+    assert (
+        _cli(
+            db, "record-head", "--mission", MISSION, "--head-sha", HEAD_A, "--actor", "builder-1"
+        ).returncode
+        == 0
+    )
+    assert (
+        _cli(
+            db,
+            "checkpoint",
+            "--mission",
+            MISSION,
+            "--agent",
+            "builder-1",
+            "--state",
+            "PUSHED",
+            "--head-sha",
+            HEAD_A,
+            "--dirty-count",
+            "0",
+        ).returncode
+        == 0
+    )
+    self_review = _cli(
+        db,
+        "record-evidence",
+        "--mission",
+        MISSION,
+        "--role",
+        "REVIEWER",
+        "--head-sha",
+        HEAD_A,
+        "--actor",
+        "builder-1",
+        "--verdict",
+        "ACCEPTED",
+    )
     assert self_review.returncode == 2
     for role, actor in (("REVIEWER", "reviewer-1"), ("VERIFIER", "verifier-1")):
-        assert _cli(db, "record-evidence", "--mission", MISSION, "--role", role, "--head-sha",
-                    HEAD_A, "--actor", actor, "--verdict", "ACCEPTED").returncode == 0
+        assert (
+            _cli(
+                db,
+                "record-evidence",
+                "--mission",
+                MISSION,
+                "--role",
+                role,
+                "--head-sha",
+                HEAD_A,
+                "--actor",
+                actor,
+                "--verdict",
+                "ACCEPTED",
+            ).returncode
+            == 0
+        )
 
     snap = tmp_path / "snapshot.json"
     snap.write_text(json.dumps(snapshot(checks={"ci": "failure"})))
@@ -190,19 +256,23 @@ def test_cli_merge_gate_exit_codes(tmp_path):
     assert failed.returncode == 3
     assert json.loads(failed.stdout)["next_gate"] == "CI"
     assert _cli(db, "merge-authorization", "--mission", MISSION).returncode == 3
-    assert json.loads(
-        _cli(db, "policy", "--mission", MISSION, "--action", "merge").stdout
-    )["allowed"] is False
+    assert (
+        json.loads(_cli(db, "policy", "--mission", MISSION, "--action", "merge").stdout)["allowed"]
+        is False
+    )
 
-    ready = _cli(db, "merge-evaluate", "--mission", MISSION, "--snapshot-json",
-                 json.dumps(snapshot()))
+    ready = _cli(
+        db, "merge-evaluate", "--mission", MISSION, "--snapshot-json", json.dumps(snapshot())
+    )
     assert ready.returncode == 0, ready.stdout
     assert json.loads(ready.stdout)["verdict"] == "MERGE_READY"
     assert _cli(db, "merge-authorization", "--mission", MISSION).returncode == 0
-    assert json.loads(
-        _cli(db, "policy", "--mission", MISSION, "--action", "merge").stdout
-    )["allowed"] is True
+    assert (
+        json.loads(_cli(db, "policy", "--mission", MISSION, "--action", "merge").stdout)["allowed"]
+        is True
+    )
 
-    classify = _cli(db, "classify-conflicts", "--mergeable", "false", "--path",
-                    ".github/workflows/ci.yml")
+    classify = _cli(
+        db, "classify-conflicts", "--mergeable", "false", "--path", ".github/workflows/ci.yml"
+    )
     assert json.loads(classify.stdout)["label"] == "CLASS-4 UNSAFE"

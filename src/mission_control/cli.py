@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -7,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from .checkpoint_dispatch import CheckpointDispatcher, ImplementationProof
 from .control_sync import (
     DEFAULT_REQUIRED,
     CheckpointEnvelope,
@@ -17,6 +17,19 @@ from .control_sync import (
 )
 from .controller import MissionController
 from .implementation_api import ImplementationAPI
+from .inventory import (
+    KINDS,
+    STATUSES,
+    InventoryScanner,
+    RepositoryTarget,
+    filter_report,
+    latest_report,
+    load_expected_hosts,
+    registry_targets,
+    tailscale_status_file,
+    tailscale_status_live,
+)
+from .inventory_api import InventoryAPI
 from .lease import LeaseManager
 from .merge_api import MergeCoordinatorAPI
 from .merge_coordinator import (
@@ -46,6 +59,57 @@ def _store(path: str) -> MissionStore:
     store.initialize()
     return store
 
+
+def _add_inventory_source_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--repo",
+        action="append",
+        default=[],
+        metavar="NAME=PATH",
+        help="extra repository checkout to scan (repeatable)",
+    )
+    parser.add_argument(
+        "--no-registry",
+        action="store_true",
+        help="do not scan repositories from the registry table",
+    )
+    parser.add_argument("--nodes-config", help="expected hosts (tailscale.nodes.json)")
+    tailnet = parser.add_mutually_exclusive_group()
+    tailnet.add_argument("--tailscale-status", help="tailscale status --json capture file")
+    tailnet.add_argument(
+        "--tailscale-live",
+        action="store_true",
+        help="read-only `tailscale status --json` on this host",
+    )
+
+
+def _inventory_runner(store: MissionStore, args: argparse.Namespace, *, persist: bool):
+    extra: list[RepositoryTarget] = []
+    for raw in args.repo:
+        name, sep, path = raw.partition("=")
+        if not sep or not name.strip() or not path.strip():
+            raise SystemExit(f"--repo must be NAME=PATH, got: {raw}")
+        extra.append(RepositoryTarget(name.strip(), path.strip()))
+    expected = load_expected_hosts(args.nodes_config) if args.nodes_config else []
+    provider = None
+    if args.tailscale_status:
+        provider = tailscale_status_file(args.tailscale_status)
+    elif args.tailscale_live:
+        provider = tailscale_status_live()
+    scanner = InventoryScanner(store=store)
+
+    def run() -> dict:
+        targets = [] if args.no_registry else registry_targets(store)
+        explicit = {target.name for target in extra}
+        targets = [target for target in targets if target.name not in explicit] + extra
+        return scanner.scan(
+            repositories=targets,
+            expected_hosts=expected,
+            status_provider=provider,
+            persist=persist,
+        )
+
+    return run
 
 def _provider_probes(store: MissionStore, runtime_root: Path, providers: list[str]) -> dict:
     from .adapters.claude import ClaudeAdapter
@@ -79,11 +143,14 @@ def main() -> None:
     create.add_argument("--worktree")
     create.add_argument("--base-sha")
     create.add_argument("--approval", type=int, default=int(ApprovalLevel.LOCAL_WRITE))
+    create.add_argument("--acceptance", action="append", default=[])
 
     claim = sub.add_parser("claim")
     claim.add_argument("--mission", required=True)
     claim.add_argument("--agent", required=True)
-    claim.add_argument("--role", choices=[r.value for r in AgentRole], default=AgentRole.WRITER.value)
+    claim.add_argument(
+        "--role", choices=[r.value for r in AgentRole], default=AgentRole.WRITER.value
+    )
     claim.add_argument("--ttl", type=int, default=600)
 
     heartbeat = sub.add_parser("heartbeat")
@@ -122,6 +189,30 @@ def main() -> None:
     status = sub.add_parser("status")
     status.add_argument("--mission", required=True)
 
+    dispatch_proof = sub.add_parser("dispatch-proof")
+    dispatch_proof.add_argument("--mission", required=True)
+    dispatch_proof.add_argument("--agent", required=True)
+    dispatch_proof.add_argument("--execution")
+    dispatch_proof.add_argument("--implementation-file", action="append", default=[])
+    dispatch_proof.add_argument("--api-endpoint", action="append", default=[])
+    dispatch_proof.add_argument("--tests-json", default="{}")
+    dispatch_proof.add_argument("--local-sha")
+    dispatch_proof.add_argument("--pushed-sha")
+    dispatch_proof.add_argument("--pr-number", type=int)
+    dispatch_proof.add_argument("--pr-url")
+    dispatch_proof.add_argument("--pr-head-sha")
+    dispatch_proof.add_argument("--next-slice")
+
+    dispatch_run = sub.add_parser("dispatch-run")
+    dispatch_run.add_argument("--limit", type=int, default=100)
+
+    dispatch_state = sub.add_parser("dispatch-state")
+    dispatch_state.add_argument("--recent", type=int, default=20)
+
+    dispatch_serve = sub.add_parser("dispatch-serve")
+    dispatch_serve.add_argument("--host", default="127.0.0.1")
+    dispatch_serve.add_argument("--port", type=int, default=8765)
+
     record_head = sub.add_parser("record-head")
     record_head.add_argument("--mission", required=True)
     record_head.add_argument("--head-sha", required=True)
@@ -132,9 +223,7 @@ def main() -> None:
     evidence.add_argument("--role", choices=[r.value for r in EvidenceRole], required=True)
     evidence.add_argument("--head-sha", required=True)
     evidence.add_argument("--actor", required=True)
-    evidence.add_argument(
-        "--verdict", choices=[v.value for v in EvidenceVerdict], required=True
-    )
+    evidence.add_argument("--verdict", choices=[v.value for v in EvidenceVerdict], required=True)
     evidence.add_argument("--blocker", action="append", default=[])
 
     dependency = sub.add_parser("add-dependency")
@@ -142,9 +231,7 @@ def main() -> None:
     dependency.add_argument("--depends-on", required=True)
 
     classify = sub.add_parser("classify-conflicts")
-    classify.add_argument(
-        "--mergeable", choices=["true", "false", "unknown"], required=True
-    )
+    classify.add_argument("--mergeable", choices=["true", "false", "unknown"], required=True)
     classify.add_argument("--path", action="append", default=[])
     classify.add_argument("--cross-repo", action="store_true")
 
@@ -196,6 +283,20 @@ def main() -> None:
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
+    inventory_scan = sub.add_parser("inventory-scan")
+    _add_inventory_source_args(inventory_scan)
+    inventory_scan.add_argument("--no-persist", action="store_true")
+
+    inventory_drift = sub.add_parser("inventory-drift")
+    inventory_drift.add_argument("--kind", action="append", choices=KINDS, default=[])
+    inventory_drift.add_argument("--status", action="append", choices=STATUSES, default=[])
+    inventory_drift.add_argument("--repository", action="append", default=[])
+
+    inventory_api = sub.add_parser("serve-inventory-api")
+    _add_inventory_source_args(inventory_api)
+    inventory_api.add_argument("--host", default="127.0.0.1")
+    inventory_api.add_argument("--port", type=int, default=8791)
+
     watchdog = sub.add_parser("watchdog-status")
     watchdog.add_argument(
         "--worker",
@@ -245,9 +346,7 @@ def main() -> None:
         choices=[lane.value for lane in WorkerLane],
         default=[],
     )
-    node_probe.add_argument(
-        "--provider", action="append", choices=["claude", "codex"], default=[]
-    )
+    node_probe.add_argument("--provider", action="append", choices=["claude", "codex"], default=[])
     node_probe.add_argument("--worktree-root", required=True)
     node_probe.add_argument("--tailnet-dns")
     node_probe.add_argument("--max-parallel", type=int, default=3)
@@ -283,9 +382,71 @@ def main() -> None:
                 worktree=args.worktree,
                 base_sha=args.base_sha,
                 required_approval=ApprovalLevel(args.approval),
+                acceptance=args.acceptance,
             )
         )
         print(json.dumps({"ok": True, "mission": args.mission}))
+        return
+
+    if args.command == "dispatch-proof":
+        proof_id = CheckpointDispatcher(store).record_proof(
+            ImplementationProof(
+                mission_id=args.mission,
+                agent_id=args.agent,
+                execution_id=args.execution,
+                implementation_files=tuple(args.implementation_file),
+                api_endpoints=tuple(args.api_endpoint),
+                tests=json.loads(args.tests_json),
+                local_commit_sha=args.local_sha,
+                pushed_branch_sha=args.pushed_sha,
+                pr_number=args.pr_number,
+                pr_url=args.pr_url,
+                pr_head_sha=args.pr_head_sha,
+                next_slice=args.next_slice,
+            )
+        )
+        print(json.dumps({"ok": True, "proof_id": proof_id}))
+        return
+
+    if args.command == "dispatch-run":
+        decisions = CheckpointDispatcher(store).run(limit=args.limit)
+        print(
+            json.dumps(
+                {
+                    "processed": len(decisions),
+                    "decisions": [
+                        {
+                            "event_id": item.event_id,
+                            "checkpoint_id": item.checkpoint_id,
+                            "mission_id": item.mission_id,
+                            "classification": item.classification.value,
+                            "reasons": list(item.reasons),
+                            "successor_mission_id": item.successor_mission_id,
+                        }
+                        for item in decisions
+                    ],
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "dispatch-state":
+        print(json.dumps(CheckpointDispatcher(store).state(recent=args.recent), sort_keys=True))
+        return
+
+    if args.command == "dispatch-serve":
+        from .dispatch_api import DispatchAPI
+
+        server = DispatchAPI(CheckpointDispatcher(store)).server(args.host, args.port)
+        host, port = server.server_address[:2]
+        print(json.dumps({"ok": True, "listening": f"http://{host}:{port}"}), flush=True)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.server_close()
         return
 
     if args.command == "watchdog-status":
@@ -392,8 +553,11 @@ def main() -> None:
         store.add_dependency(args.mission, args.depends_on)
         print(
             json.dumps(
-                {"ok": True, "mission": args.mission,
-                 "dependencies": store.dependencies(args.mission)}
+                {
+                    "ok": True,
+                    "mission": args.mission,
+                    "dependencies": store.dependencies(args.mission),
+                }
             )
         )
         return
@@ -520,9 +684,7 @@ def main() -> None:
                 {
                     "count": len(rows),
                     "proven": sum(row["state"] == "PROVEN" for row in rows),
-                    "needs_rework": sum(
-                        row["state"] == "NEEDS_REWORK" for row in rows
-                    ),
+                    "needs_rework": sum(row["state"] == "NEEDS_REWORK" for row in rows),
                     "executions": rows,
                 },
                 sort_keys=True,
@@ -601,8 +763,7 @@ def main() -> None:
             raise SystemExit(f"mission not found: {args.mission}")
         if not leases.is_owner(args.mission, args.agent):
             raise SystemExit(
-                f"ownership refused: {args.agent} does not hold the writer lease "
-                f"for {args.mission}"
+                f"ownership refused: {args.agent} does not hold the writer lease for {args.mission}"
             )
         observed_at = datetime.fromisoformat(args.observed_at) if args.observed_at else None
         if observed_at is not None and observed_at.tzinfo is None:
@@ -671,6 +832,41 @@ def main() -> None:
                 sort_keys=True,
             )
         )
+        return
+
+    if args.command == "inventory-scan":
+        report = _inventory_runner(store, args, persist=not args.no_persist)()
+        print(json.dumps(report, sort_keys=True))
+        return
+
+    if args.command == "inventory-drift":
+        report = latest_report(store)
+        if report is None:
+            raise SystemExit("no inventory scan recorded; run inventory-scan first")
+        print(
+            json.dumps(
+                filter_report(
+                    report,
+                    kinds=args.kind,
+                    statuses=args.status,
+                    repositories=args.repository,
+                ),
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "serve-inventory-api":
+        server = InventoryAPI(store, _inventory_runner(store, args, persist=True)).server(
+            args.host, args.port
+        )
+        print(json.dumps({"ok": True, "listening": list(server.server_address)}))
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.server_close()
         return
 
     if args.command.startswith("node") or args.command == "serve-worker-node-api":

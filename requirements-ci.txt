@@ -1,0 +1,14 @@
+# Python 3.12 CI constraints, including transitive test/runtime dependencies.
+# Install with pip -c; project requirements remain defined in pyproject.toml.
+cffi==2.1.1
+cryptography==46.0.3
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.6.0
+pycparser==3.11
+Pygments==2.21.0
+PyJWT==2.10.1
+pytest==9.1.1
+ruff==0.16.10
+setuptools==80.9.0
+wheel==0.45.1
