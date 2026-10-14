@@ -8,8 +8,7 @@
   "backend": "Codestra-Mission-Control",
   "path_prefix": "/platform/v1/dashboard/",
   "methods": [
-    "GET",
-    "OPTIONS"
+    "GET"
   ],
   "strip_path": false,
   "jwt": {
@@ -19,12 +18,24 @@
       "mission-control-ui"
     ],
     "required_permission": "dashboard:read",
-    "algorithm": "RS256"
+    "algorithm": "RS256",
+    "required_gateway_scope": "dashboard.read"
   },
   "security": {
     "direct_public_listener": false,
     "strip_identity_headers": true,
     "deny_private_metrics": true,
     "exact_sha_certification_required": true
-  }
+  },
+  "read_routes": [
+    "contract",
+    "repositories",
+    "repository",
+    "agents",
+    "tasks",
+    "task",
+    "local-work",
+    "sources",
+    "notifications"
+  ]
 }
