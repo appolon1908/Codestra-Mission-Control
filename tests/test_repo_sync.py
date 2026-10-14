@@ -368,3 +368,32 @@ def test_cli_publish_readiness_exit_codes(topology, tmp_path):
     missing = _cli(tmp_path, "publish-readiness", "--repo", str(tmp_path / "nope"))
     assert missing.returncode == 3
     assert json.loads(missing.stdout)["ok"] is False
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "8.8.8.8", "192.168.1.1", "example.com"])
+def test_api_rejects_non_private_binding_before_socket_creation(host, monkeypatch):
+    import mission_control.repo_sync_api as api_module
+
+    opened = []
+    monkeypatch.setattr(api_module, "ThreadingHTTPServer", lambda *args: opened.append(args))
+    api = RepoSyncAPI(None, inspector())
+    with pytest.raises(ValueError, match="loopback or tailnet"):
+        api.server(host)
+    assert opened == []
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1", "100.64.0.1", "fd7a:115c:a1e0::1"])
+def test_api_accepts_private_binding_with_correct_address_family(host, monkeypatch):
+    import socket
+    from http.server import ThreadingHTTPServer
+
+    # Validate policy/family without requiring a configured Tailscale interface.
+    monkeypatch.setattr(ThreadingHTTPServer, "server_bind", lambda self: None)
+    monkeypatch.setattr(ThreadingHTTPServer, "server_activate", lambda self: None)
+    server = RepoSyncAPI(None, inspector()).server(host)
+    try:
+        expected = "127.0.0.1" if host == "localhost" else host
+        assert server.server_address[0] == expected
+        assert server.address_family == (socket.AF_INET6 if ":" in host else socket.AF_INET)
+    finally:
+        server.server_close()

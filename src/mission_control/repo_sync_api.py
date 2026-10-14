@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import socket
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -122,6 +124,17 @@ class RepoSyncAPI:
         return 404, {"error": "not_found"}
 
     def server(self, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
+        host = "127.0.0.1" if host == "localhost" else host
+        try:
+            address = ip_address(host)
+        except ValueError:
+            raise ValueError("repo-sync API must bind to a literal loopback or tailnet address") from None
+        if not (
+            address.is_loopback
+            or address in ip_network("100.64.0.0/10")
+            or address in ip_network("fd7a:115c:a1e0::/48")
+        ):
+            raise ValueError("repo-sync API must bind to a literal loopback or tailnet address")
         api = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -148,4 +161,7 @@ class RepoSyncAPI:
 
             do_POST = do_PUT = do_PATCH = do_DELETE = _read_only
 
-        return ThreadingHTTPServer((host, port), Handler)
+        class Server(ThreadingHTTPServer):
+            address_family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
+
+        return Server((host, port), Handler)
