@@ -56,11 +56,17 @@ class DevelopmentGuard:
             blockers.append("agent_stopped_without_replacement")
         questions = {
             "what_is_being_built": evidence.task_id,
-            "is_base_current": "yes" if evidence.expected_base_sha == evidence.remote_base_sha else "no",
+            "is_base_current": "yes"
+            if evidence.expected_base_sha == evidence.remote_base_sha
+            else "no",
             "is_lane_clean": "yes" if evidence.dirty_count == 0 else "no",
-            "are_headers_correct": "yes" if not any(x.startswith("wrong_header:") for x in blockers) else "no",
+            "are_headers_correct": "yes"
+            if not any(x.startswith("wrong_header:") for x in blockers)
+            else "no",
             "is_ci_green": "yes" if not missing_ci else "no",
-            "is_agent_covered": "yes" if evidence.heartbeat_current or evidence.replacement_assigned else "no",
+            "is_agent_covered": "yes"
+            if evidence.heartbeat_current or evidence.replacement_assigned
+            else "no",
             "can_work_continue": "yes" if state is GuardState.CLEAR else "no",
         }
         return GuardAnswer(state, tuple(blockers), questions)

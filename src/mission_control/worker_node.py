@@ -332,7 +332,9 @@ def _tool_version(command: list[str]) -> str | None:
         return None
     if proc.returncode != 0:
         return None
-    return redact_text(proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else "", limit=120)
+    return redact_text(
+        proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else "", limit=120
+    )
 
 
 def _writable(root: Path) -> bool:
@@ -477,13 +479,10 @@ class WorkerNodeRegistry:
             "updated_at": row["updated_at"],
             "last_heartbeat_at": row["last_heartbeat_at"],
             "provider_auth": [
-                status.as_payload()
-                for _, status in sorted(self.auth(node_id).items())
+                status.as_payload() for _, status in sorted(self.auth(node_id).items())
             ],
             "readiness": decision.as_payload(),
         }
 
     def list(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
-        return [
-            self.snapshot(row["node_id"], now=now) for row in self.store.list_worker_nodes()
-        ]
+        return [self.snapshot(row["node_id"], now=now) for row in self.store.list_worker_nodes()]

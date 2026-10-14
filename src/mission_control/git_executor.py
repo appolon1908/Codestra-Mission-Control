@@ -61,9 +61,7 @@ class FileFence:
     def validate(self, relative_paths: list[str]) -> None:
         rejected = sorted({path for path in relative_paths if not self.allows(path)})
         if rejected:
-            raise FileFenceViolation(
-                "paths outside mission fence: " + ", ".join(rejected)
-            )
+            raise FileFenceViolation("paths outside mission fence: " + ", ".join(rejected))
 
 
 class GitWorktreeExecutor:
@@ -87,9 +85,7 @@ class GitWorktreeExecutor:
         if program_files_x86:
             candidates.append(Path(program_files_x86) / "Git" / "cmd" / "git.exe")
 
-        candidates.append(
-            Path(r"C:\Users\agent\AppData\Local\Programs\Git\cmd\git.exe")
-        )
+        candidates.append(Path(r"C:\Users\agent\AppData\Local\Programs\Git\cmd\git.exe"))
 
         for candidate in candidates:
             if candidate.is_file():
@@ -203,9 +199,7 @@ class GitWorktreeExecutor:
         state_before = self.inspect(primary)
         base_sha = self.resolve(primary, base_ref)
 
-        branch_name = branch or (
-            f"mission/{self._slug(mission_id)}-{self._slug(agent_id)}"
-        )
+        branch_name = branch or (f"mission/{self._slug(mission_id)}-{self._slug(agent_id)}")
         target = (
             Path(worktree_root).resolve()
             / f"{primary.name}-{self._slug(mission_id)}-{self._slug(agent_id)}"
@@ -237,14 +231,17 @@ class GitWorktreeExecutor:
                     f"branch {branch_name} is already checked out at {existing_path}"
                 )
 
-        branch_exists = self._run(
-            primary,
-            "show-ref",
-            "--verify",
-            "--quiet",
-            f"refs/heads/{branch_name}",
-            check=False,
-        ).returncode == 0
+        branch_exists = (
+            self._run(
+                primary,
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{branch_name}",
+                check=False,
+            ).returncode
+            == 0
+        )
 
         target.parent.mkdir(parents=True, exist_ok=True)
         if branch_exists:

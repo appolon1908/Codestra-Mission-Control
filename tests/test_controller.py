@@ -1,4 +1,3 @@
-
 from datetime import UTC, datetime, timedelta
 
 from mission_control.controller import ControllerAction, MissionController
@@ -32,9 +31,7 @@ def test_expired_writer_is_reassigned(tmp_path):
 def test_review_state_without_proven_delivery_reassigns_implementation(tmp_path):
     store = MissionStore(tmp_path / "mission.db")
     store.initialize()
-    store.upsert_mission(
-        Mission("PAS-5", "repo", "goal", status=MissionStatus.IN_REVIEW)
-    )
+    store.upsert_mission(Mission("PAS-5", "repo", "goal", status=MissionStatus.IN_REVIEW))
     decision = MissionController(store).evaluate("PAS-5")
     assert decision.action == ControllerAction.REASSIGN
     assert "implementation agent" in decision.reason
@@ -43,9 +40,7 @@ def test_review_state_without_proven_delivery_reassigns_implementation(tmp_path)
 def test_review_state_with_proven_delivery_moves_agent_to_next_implementation(tmp_path):
     store = MissionStore(tmp_path / "mission.db")
     store.initialize()
-    store.upsert_mission(
-        Mission("PAS-6", "repo", "goal", status=MissionStatus.IN_REVIEW)
-    )
+    store.upsert_mission(Mission("PAS-6", "repo", "goal", status=MissionStatus.IN_REVIEW))
     store.start_implementation_execution(
         execution_id="impl-pas6",
         mission_id="PAS-6",
