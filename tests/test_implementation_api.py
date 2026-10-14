@@ -61,9 +61,7 @@ def test_start_list_and_get_execution(tmp_path):
     assert detail["api_required"] is True
     assert detail["state"] == "STARTED"
 
-    with urllib.request.urlopen(
-        base + "/platform/v1/agent-executions", timeout=3
-    ) as response:
+    with urllib.request.urlopen(base + "/platform/v1/agent-executions", timeout=3) as response:
         listing = json.load(response)
     assert listing["count"] == 1
     server.shutdown()

@@ -51,8 +51,12 @@ class LaneAssignment:
 
 ALLOWED_TRANSITIONS = {
     TaskLifecycle.READY: {TaskLifecycle.ACTIVE, TaskLifecycle.BLOCKED},
-    TaskLifecycle.ACTIVE: {TaskLifecycle.IMPLEMENTATION_DONE, TaskLifecycle.WAITING,
-                           TaskLifecycle.REPLACEMENT_NEEDED, TaskLifecycle.BLOCKED},
+    TaskLifecycle.ACTIVE: {
+        TaskLifecycle.IMPLEMENTATION_DONE,
+        TaskLifecycle.WAITING,
+        TaskLifecycle.REPLACEMENT_NEEDED,
+        TaskLifecycle.BLOCKED,
+    },
     TaskLifecycle.REPLACEMENT_NEEDED: {TaskLifecycle.ACTIVE, TaskLifecycle.BLOCKED},
     TaskLifecycle.IMPLEMENTATION_DONE: {TaskLifecycle.REVIEW_REQUIRED},
     TaskLifecycle.REVIEW_REQUIRED: {TaskLifecycle.REVIEW_DONE, TaskLifecycle.ACTIVE},
@@ -61,7 +65,11 @@ ALLOWED_TRANSITIONS = {
     TaskLifecycle.TEST_DONE: {TaskLifecycle.CERTIFICATION_PENDING},
     TaskLifecycle.CERTIFICATION_PENDING: {TaskLifecycle.CERTIFIED, TaskLifecycle.ACTIVE},
     TaskLifecycle.CERTIFIED: {TaskLifecycle.COMPLETED},
-    TaskLifecycle.WAITING: {TaskLifecycle.ACTIVE, TaskLifecycle.REPLACEMENT_NEEDED, TaskLifecycle.BLOCKED},
+    TaskLifecycle.WAITING: {
+        TaskLifecycle.ACTIVE,
+        TaskLifecycle.REPLACEMENT_NEEDED,
+        TaskLifecycle.BLOCKED,
+    },
     TaskLifecycle.BLOCKED: {TaskLifecycle.READY, TaskLifecycle.ACTIVE},
     TaskLifecycle.COMPLETED: set(),
 }

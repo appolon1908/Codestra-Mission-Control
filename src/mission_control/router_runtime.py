@@ -24,7 +24,9 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8792)
     args = parser.parse_args()
     server = MissionRouterAPI(build(args.db)).server(args.host, args.port)
-    signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
+    signal.signal(
+        signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start()
+    )
     server.serve_forever()
 
 
