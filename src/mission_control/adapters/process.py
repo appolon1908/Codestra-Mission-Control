@@ -93,13 +93,10 @@ class ProcessAgentAdapter(ABC):
         lease = self.leases.current(assignment.mission_id)
         if not lease or lease["agent_id"] != assignment.agent_id:
             raise LeaseNotOwned(
-                f"{assignment.agent_id} does not own writer lease for "
-                f"{assignment.mission_id}"
+                f"{assignment.agent_id} does not own writer lease for {assignment.mission_id}"
             )
         if lease["role"] != "WRITER":
-            raise LeaseNotOwned(
-                f"{assignment.agent_id} has {lease['role']} lease, not WRITER"
-            )
+            raise LeaseNotOwned(f"{assignment.agent_id} has {lease['role']} lease, not WRITER")
 
     def build_prompt(self, assignment: AgentAssignment) -> str:
         acceptance = "\n".join(f"- {item}" for item in assignment.acceptance)
@@ -137,8 +134,7 @@ class ProcessAgentAdapter(ABC):
         state = self.git.inspect(assignment.worktree)
         if state.head_sha != assignment.base_sha:
             raise AgentProcessError(
-                f"assigned worktree head {state.head_sha} != exact base "
-                f"{assignment.base_sha}"
+                f"assigned worktree head {state.head_sha} != exact base {assignment.base_sha}"
             )
         if state.branch != assignment.branch:
             raise AgentProcessError(
@@ -173,10 +169,7 @@ class ProcessAgentAdapter(ABC):
 
         creationflags = 0
         if os.name == "nt":
-            creationflags = (
-                subprocess.CREATE_NEW_PROCESS_GROUP
-                | subprocess.DETACHED_PROCESS
-            )
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
         runner = subprocess.Popen(
             [
                 self.python,
