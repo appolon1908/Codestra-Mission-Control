@@ -1,6 +1,8 @@
 import pytest
-from mission_control.mission_auditor import MissionAuditor,AuditVerdict
+
 from mission_control.evidence_matrix import EvidenceMatrix
+from mission_control.mission_auditor import AuditVerdict, MissionAuditor
+
 
 def test_mission_auditor_requires_complete_engineering_coverage():
     coverage={k:True for k in ("core","security","api","routes","data","integrations","observability","testing","delivery","rollback")}

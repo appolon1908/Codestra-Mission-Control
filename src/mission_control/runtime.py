@@ -1,11 +1,16 @@
 from __future__ import annotations
-import argparse,signal,threading
-from .dashboard_api import DashboardAPI
-from .store import MissionStore
+
+import argparse
+import signal
+import threading
+
 from .agent_registry import AgentRegistry
-from .oversight import OversightStore
+from .dashboard_api import DashboardAPI
 from .mission_graph import MissionGraphStore
+from .oversight import OversightStore
 from .router_store import RouterStore
+from .store import MissionStore
+
 
 def build(path):
  s=MissionStore(path);s.initialize();AgentRegistry(s).initialize();OversightStore(s).initialize();MissionGraphStore(s).initialize();RouterStore(s).initialize();return s

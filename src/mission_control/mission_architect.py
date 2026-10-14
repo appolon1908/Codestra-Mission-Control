@@ -1,6 +1,9 @@
 from __future__ import annotations
+
+import hashlib
+import json
 from dataclasses import dataclass
-import hashlib, json
+
 
 @dataclass(frozen=True)
 class MissionBrief:
