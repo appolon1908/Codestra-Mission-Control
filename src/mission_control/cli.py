@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -18,6 +17,19 @@ from .control_sync import (
 )
 from .controller import MissionController
 from .implementation_api import ImplementationAPI
+from .inventory import (
+    KINDS,
+    STATUSES,
+    InventoryScanner,
+    RepositoryTarget,
+    filter_report,
+    latest_report,
+    load_expected_hosts,
+    registry_targets,
+    tailscale_status_file,
+    tailscale_status_live,
+)
+from .inventory_api import InventoryAPI
 from .lease import LeaseManager
 from .merge_api import MergeCoordinatorAPI
 from .merge_coordinator import (
@@ -49,6 +61,57 @@ def _store(path: str) -> MissionStore:
     store.initialize()
     return store
 
+
+def _add_inventory_source_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--repo",
+        action="append",
+        default=[],
+        metavar="NAME=PATH",
+        help="extra repository checkout to scan (repeatable)",
+    )
+    parser.add_argument(
+        "--no-registry",
+        action="store_true",
+        help="do not scan repositories from the registry table",
+    )
+    parser.add_argument("--nodes-config", help="expected hosts (tailscale.nodes.json)")
+    tailnet = parser.add_mutually_exclusive_group()
+    tailnet.add_argument("--tailscale-status", help="tailscale status --json capture file")
+    tailnet.add_argument(
+        "--tailscale-live",
+        action="store_true",
+        help="read-only `tailscale status --json` on this host",
+    )
+
+
+def _inventory_runner(store: MissionStore, args: argparse.Namespace, *, persist: bool):
+    extra: list[RepositoryTarget] = []
+    for raw in args.repo:
+        name, sep, path = raw.partition("=")
+        if not sep or not name.strip() or not path.strip():
+            raise SystemExit(f"--repo must be NAME=PATH, got: {raw}")
+        extra.append(RepositoryTarget(name.strip(), path.strip()))
+    expected = load_expected_hosts(args.nodes_config) if args.nodes_config else []
+    provider = None
+    if args.tailscale_status:
+        provider = tailscale_status_file(args.tailscale_status)
+    elif args.tailscale_live:
+        provider = tailscale_status_live()
+    scanner = InventoryScanner(store=store)
+
+    def run() -> dict:
+        targets = [] if args.no_registry else registry_targets(store)
+        explicit = {target.name for target in extra}
+        targets = [target for target in targets if target.name not in explicit] + extra
+        return scanner.scan(
+            repositories=targets,
+            expected_hosts=expected,
+            status_provider=provider,
+            persist=persist,
+        )
+
+    return run
 
 def _provider_probes(store: MissionStore, runtime_root: Path, providers: list[str]) -> dict:
     from .adapters.claude import ClaudeAdapter
@@ -123,7 +186,9 @@ def main() -> None:
     claim = sub.add_parser("claim")
     claim.add_argument("--mission", required=True)
     claim.add_argument("--agent", required=True)
-    claim.add_argument("--role", choices=[r.value for r in AgentRole], default=AgentRole.WRITER.value)
+    claim.add_argument(
+        "--role", choices=[r.value for r in AgentRole], default=AgentRole.WRITER.value
+    )
     claim.add_argument("--ttl", type=int, default=600)
 
     heartbeat = sub.add_parser("heartbeat")
@@ -172,9 +237,7 @@ def main() -> None:
     evidence.add_argument("--role", choices=[r.value for r in EvidenceRole], required=True)
     evidence.add_argument("--head-sha", required=True)
     evidence.add_argument("--actor", required=True)
-    evidence.add_argument(
-        "--verdict", choices=[v.value for v in EvidenceVerdict], required=True
-    )
+    evidence.add_argument("--verdict", choices=[v.value for v in EvidenceVerdict], required=True)
     evidence.add_argument("--blocker", action="append", default=[])
 
     dependency = sub.add_parser("add-dependency")
@@ -182,9 +245,7 @@ def main() -> None:
     dependency.add_argument("--depends-on", required=True)
 
     classify = sub.add_parser("classify-conflicts")
-    classify.add_argument(
-        "--mergeable", choices=["true", "false", "unknown"], required=True
-    )
+    classify.add_argument("--mergeable", choices=["true", "false", "unknown"], required=True)
     classify.add_argument("--path", action="append", default=[])
     classify.add_argument("--cross-repo", action="store_true")
 
@@ -251,6 +312,20 @@ def main() -> None:
     sync_api.add_argument("--host", default="127.0.0.1")
     sync_api.add_argument("--port", type=int, default=8791)
 
+    inventory_scan = sub.add_parser("inventory-scan")
+    _add_inventory_source_args(inventory_scan)
+    inventory_scan.add_argument("--no-persist", action="store_true")
+
+    inventory_drift = sub.add_parser("inventory-drift")
+    inventory_drift.add_argument("--kind", action="append", choices=KINDS, default=[])
+    inventory_drift.add_argument("--status", action="append", choices=STATUSES, default=[])
+    inventory_drift.add_argument("--repository", action="append", default=[])
+
+    inventory_api = sub.add_parser("serve-inventory-api")
+    _add_inventory_source_args(inventory_api)
+    inventory_api.add_argument("--host", default="127.0.0.1")
+    inventory_api.add_argument("--port", type=int, default=8791)
+
     watchdog = sub.add_parser("watchdog-status")
     watchdog.add_argument(
         "--worker",
@@ -300,9 +375,7 @@ def main() -> None:
         choices=[lane.value for lane in WorkerLane],
         default=[],
     )
-    node_probe.add_argument(
-        "--provider", action="append", choices=["claude", "codex"], default=[]
-    )
+    node_probe.add_argument("--provider", action="append", choices=["claude", "codex"], default=[])
     node_probe.add_argument("--worktree-root", required=True)
     node_probe.add_argument("--tailnet-dns")
     node_probe.add_argument("--max-parallel", type=int, default=3)
@@ -450,8 +523,11 @@ def main() -> None:
         store.add_dependency(args.mission, args.depends_on)
         print(
             json.dumps(
-                {"ok": True, "mission": args.mission,
-                 "dependencies": store.dependencies(args.mission)}
+                {
+                    "ok": True,
+                    "mission": args.mission,
+                    "dependencies": store.dependencies(args.mission),
+                }
             )
         )
         return
@@ -578,9 +654,7 @@ def main() -> None:
                 {
                     "count": len(rows),
                     "proven": sum(row["state"] == "PROVEN" for row in rows),
-                    "needs_rework": sum(
-                        row["state"] == "NEEDS_REWORK" for row in rows
-                    ),
+                    "needs_rework": sum(row["state"] == "NEEDS_REWORK" for row in rows),
                     "executions": rows,
                 },
                 sort_keys=True,
@@ -659,8 +733,7 @@ def main() -> None:
             raise SystemExit(f"mission not found: {args.mission}")
         if not leases.is_owner(args.mission, args.agent):
             raise SystemExit(
-                f"ownership refused: {args.agent} does not hold the writer lease "
-                f"for {args.mission}"
+                f"ownership refused: {args.agent} does not hold the writer lease for {args.mission}"
             )
         observed_at = datetime.fromisoformat(args.observed_at) if args.observed_at else None
         if observed_at is not None and observed_at.tzinfo is None:
@@ -747,6 +820,41 @@ def main() -> None:
             flush=True,
         )
         server.serve_forever()
+        return
+
+    if args.command == "inventory-scan":
+        report = _inventory_runner(store, args, persist=not args.no_persist)()
+        print(json.dumps(report, sort_keys=True))
+        return
+
+    if args.command == "inventory-drift":
+        report = latest_report(store)
+        if report is None:
+            raise SystemExit("no inventory scan recorded; run inventory-scan first")
+        print(
+            json.dumps(
+                filter_report(
+                    report,
+                    kinds=args.kind,
+                    statuses=args.status,
+                    repositories=args.repository,
+                ),
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.command == "serve-inventory-api":
+        server = InventoryAPI(store, _inventory_runner(store, args, persist=True)).server(
+            args.host, args.port
+        )
+        print(json.dumps({"ok": True, "listening": list(server.server_address)}))
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.server_close()
         return
 
     if args.command.startswith("node") or args.command == "serve-worker-node-api":

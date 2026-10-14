@@ -1,17 +1,55 @@
-import json,sqlite3
+"""Import the canonical portfolio into an explicitly selected local ledger."""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
 from mission_control.store import MissionStore
-from mission_control.work_authority import WorkAuthority,WorkItem,WorkType
-repos=json.loads(r'''["Kong","OpenAPI","Agent-Desktop-WebRTC","Mobile-Android-Agent","OBS-Studio-Nabeel-","Wazuh","codestra-backend","Codestra-Alertmanager","Breero.com","Mobile-Control-UI","LARIM-A-Backend","Mobile-Device-Gateway","Codestra-Face-Liveness","Codestra-Connect","booked4seasons","Codestra-TTS-Piper","Codestra-Loki","Codestra-Postgres-Exporter","Owncast-Nabeel","Vicidialer-Codestra","Codestra-Redis-Exporter","Caddy","Meltano","N8N","Mobile-Control-Console","codestra-provisioning-service","chatbox","Superset","Codestra-cAdvisor","Codestra-Node-Exporter","beyvra-frontend","FACE-ID","Codestra-Camera-Gateway","Mobile-Sync","Odoo","Evolution-API","openrerefine-","Codestra-TTS-Kokoro","Codestra-Device-Forge","Codestra-Document-Intelligence","beyvra-backend","Moneybee-Backend","klyrow-Website-","Codestra-Workstation","codestra-production-platform","WhatsApp-Frontend","Infustruction-repo","codestra-platform","Leads-Workstation","Codestra-Mission-Control","codestra-server-c","Codestra-Alloy","Moneybee-frontend-","kyqra-crawler","Codestra-Grafana-","Codestra-Document-SDK","Codestra-OpenBao","WhatsApp","MediaMTX","codestra-foundation","Codestra-Mixxx-Native","backend2","Codestra-Marketing-","scrapper","DJONE","Codestra-OCR-Workers","Codesrea-Social-","codestra-ruleset-toolkit","Codestra-Telemetry","Keycloak","InsightFace","Codestra-Tempo","Codestra-Communication-CC","Codestra-Prometheus","Codestra-TTS-F5","Mobile-Contracts-SDK","Middleware-","kyqra","Codestra-Document-Schemas","SDK-repository","Telnexa-web","Sentry","communication-platform-","Codestra-AI","Mobile-Control-Server","Codestra-Blackbox-Exporter","social.codestra.co","codestra","Chiaki","Meltano-Leads-Importer","Codestra-PostgreSQL","telnexa","klyrow.com","kyyow-contracts","Codestra-Document-Console","websocket","Codestra-Voice-Agent","Codestra-Lead-importer-api","Database-migrations-"]''')
-db="/home/codestra/Worktrees/Runtime-Agent-Brain/agent-brain.db"
-s=MissionStore(db);s.initialize();w=WorkAuthority(s);w.initialize()
-with s.connection() as c:
- c.execute("""create table if not exists repository_registry(
- repository text primary key, full_name text not null, source text not null,
- status text not null default 'DISCOVERED', mission_state text not null default 'UNPLANNED')""")
- for repo in repos:
-  c.execute("""insert into repository_registry(repository,full_name,source,status,mission_state)
-   values(?,?,'GitHub','DISCOVERED','UNPLANNED')
-   on conflict(repository) do update set full_name=excluded.full_name,source='GitHub'""",(repo,"ingtrader21-spec/"+repo))
-  mid="PORTFOLIO-"+repo
-  w.publish(WorkItem(mid,repo,mid,WorkType.MISSION,repo+" development portfolio",metadata={"discovery":"github","planning_required":True}))
-print("registered",len(repos),"repositories")
+from mission_control.work_authority import WorkAuthority, WorkItem, WorkType
+
+DEFAULT_MANIFEST = Path(__file__).resolve().parents[1] / "config/portfolio.repositories.json"
+
+
+def import_portfolio(database: str | Path, manifest_path: str | Path = DEFAULT_MANIFEST) -> int:
+    manifest = json.loads(Path(manifest_path).read_text())
+    owner = manifest["owner"]
+    repositories = manifest["repositories"]
+    store = MissionStore(database)
+    store.initialize()
+    authority = WorkAuthority(store)
+    authority.initialize()
+    with store.connection() as connection:
+        connection.execute("""CREATE TABLE IF NOT EXISTS repository_registry (
+            repository TEXT PRIMARY KEY, full_name TEXT NOT NULL, source TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'DISCOVERED',
+            mission_state TEXT NOT NULL DEFAULT 'UNPLANNED')""")
+        for repository in repositories:
+            name = repository["name"]
+            connection.execute("""INSERT INTO repository_registry
+                (repository, full_name, source, status, mission_state)
+                VALUES (?, ?, 'GitHub', 'DISCOVERED', 'UNPLANNED')
+                ON CONFLICT(repository) DO UPDATE SET
+                    full_name=excluded.full_name, source='GitHub'""",
+                (name, f"{owner}/{name}"))
+    # Publish after the registry transaction closes: WorkAuthority owns its connection.
+    for repository in repositories:
+        name = repository["name"]
+        mission = "PORTFOLIO-" + name
+        authority.publish(WorkItem(
+            mission, name, mission, WorkType.MISSION, name + " development portfolio",
+            metadata={"discovery": "github", "planning_required": True},
+        ))
+    return len(repositories)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", required=True, help="Destination Mission Control ledger")
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    args = parser.parse_args()
+    print("registered", import_portfolio(args.db, args.manifest), "repositories")
+
+
+if __name__ == "__main__":
+    main()

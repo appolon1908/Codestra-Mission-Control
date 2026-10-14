@@ -245,8 +245,7 @@ class PullRequestSnapshot:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> PullRequestSnapshot:
-        required = ("pr_number", "head_sha", "head_branch", "base_branch", "base_sha",
-                    "target_sha")
+        required = ("pr_number", "head_sha", "head_branch", "base_branch", "base_sha", "target_sha")
         missing = [key for key in required if payload.get(key) in (None, "")]
         if missing:
             raise ValueError("snapshot missing fields: " + ", ".join(missing))

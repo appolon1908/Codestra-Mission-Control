@@ -63,6 +63,37 @@ HTTP API (GET only, repositories addressed by registry name):
 - `GET /platform/v1/repo-sync/repositories/{name}[?live=1]`
 - `GET /platform/v1/repo-sync/repositories/{name}/readiness?remote=<remote>[&live=1]`
 
+## Inventory & drift (PAS-5)
+
+Read-only scan of every registered repository and all of its worktrees, expected
+tailnet hosts, and runtime leases/executions. The scanner never fetches, pulls or
+writes the index; `behind` is relative to the last fetch, so `fetch_age_seconds`
+and `remote_refs_stale`/`never_fetched` are reported alongside it.
+
+Each subject is scanned in isolation. A failed subject is `ERROR` with an exact
+`{code, message}` and carries `last_verified` (non-authoritative) from the most
+recent successful scan; it never collapses the rest of the report. Statuses are
+`OK`, `DRIFT`, `STALE`, `ABSENT`, `ERROR`.
+
+Worktree flags: `dirty`, `untracked`, `conflicted`, `ahead`, `behind`, `diverged`,
+`local_only`, `pending_push`, `upstream_gone`, `detached_head`, `no_commits`
+(`no_upstream` and `worktree_locked` are informational). Host flags:
+`host_offline`, `host_last_seen_stale`, `host_missing_from_tailnet`,
+`host_unexpected`. Runtime flags: `lease_expired`, `heartbeat_stale`,
+`execution_stale`.
+
+    python -m mission_control.cli --db .runtime/mission-control.db inventory-scan --nodes-config config/tailscale.nodes.json --tailscale-live
+    python -m mission_control.cli --db .runtime/mission-control.db inventory-drift --status ERROR
+    python -m mission_control.cli --db .runtime/mission-control.db serve-inventory-api --nodes-config config/tailscale.nodes.json --tailscale-live
+
+API (binds 127.0.0.1:8791 by default):
+
+- `GET  /health`
+- `POST /platform/v1/inventory/drift/scans` — run and persist a scan (201; 409 while a scan runs)
+- `GET  /platform/v1/inventory/drift?kind=&status=&repository=` — latest scan with `report_stale`/`age_seconds`
+- `GET  /platform/v1/inventory/drift/repositories/{repository}` — repository + worktree items
+- `GET  /platform/v1/inventory/drift/hosts` — host + runtime items
+
 ## Worker nodes (CORE-NODE-02)
 
 Worker nodes register durable capabilities (lanes, providers, worktree root,
