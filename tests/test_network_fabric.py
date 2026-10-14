@@ -406,3 +406,12 @@ def test_bind_host_must_be_loopback_or_tailnet():
     assert validate_bind_host("203.0.113.10").code == "public_bind_forbidden"
     assert validate_bind_host("192.168.1.10").code == "public_bind_forbidden"
     assert validate_bind_host("api.example.com").code == "bind_host_not_private"
+
+
+def test_repository_inventory_has_unique_hosts():
+    from pathlib import Path
+
+    from mission_control.network_fabric import load_inventory_file
+
+    inventory = load_inventory_file(Path(__file__).resolve().parents[1] / "config/tailscale.nodes.json")
+    assert len(inventory.nodes) == len({node.hostname.lower() for node in inventory.nodes})
