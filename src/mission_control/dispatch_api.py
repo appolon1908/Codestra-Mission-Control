@@ -1,5 +1,10 @@
 """Loopback HTTP API exposing checkpoint dispatcher state.
 
+Keycloak authentication is required by default. Reads require mission:read,
+proof submission requires evidence:submit and matching authenticated agent
+identity, and dispatch execution requires mission:write. Authentication may be
+disabled only for explicitly selected development/test use on loopback.
+
 Endpoints (JSON only, stdlib server, no provider effects):
 
 - ``GET  /health``
@@ -14,11 +19,14 @@ Endpoints (JSON only, stdlib server, no provider effects):
 from __future__ import annotations
 
 import json
+import os
+import socket
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .checkpoint_dispatch import CheckpointDispatcher, ImplementationProof
+from .security import AuthError, KeycloakVerifier
 
 MAX_BODY = 1024 * 1024
 MAX_LIMIT = 500
@@ -96,6 +104,12 @@ class DispatchAPI:
         self.dispatcher = dispatcher
 
     def server(self, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
+        if host not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError("dispatcher API must bind to a literal loopback address")
+        host = "127.0.0.1" if host == "localhost" else host
+        auth = KeycloakVerifier()
+        if auth.mode == "disabled" and os.getenv("MISSION_CONTROL_ENV", "").strip().lower() not in {"development", "test"}:
+            raise RuntimeError("disabled dispatcher auth requires explicit development or test mode")
         dispatcher = self.dispatcher
 
         class Handler(BaseHTTPRequestHandler):
@@ -131,8 +145,17 @@ class DispatchAPI:
                     raise BadRequest("body must be a JSON object")
                 return body
 
+            def _authorize(self, permission: str):
+                try:
+                    return auth.require(self.headers.get("Authorization"), permission)
+                except AuthError as exc:
+                    self._json(exc.status, {"error": exc.code})
+                    return None
+
             def do_GET(self) -> None:
                 parsed = urlparse(self.path)
+                if parsed.path != "/health" and not self._authorize("mission:read"):
+                    return
                 query = parse_qs(parsed.query)
                 try:
                     if parsed.path == "/health":
@@ -162,10 +185,19 @@ class DispatchAPI:
 
             def do_POST(self) -> None:
                 parsed = urlparse(self.path)
+                permission = "evidence:submit" if parsed.path == f"{PREFIX}/proofs" else "mission:write"
+                principal = self._authorize(permission)
+                if principal is None:
+                    return
                 try:
                     body = self._body()
                     if parsed.path == f"{PREFIX}/proofs":
                         proof = proof_from_body(body)
+                        if auth.mode == "required":
+                            identity = principal.claims.get("agent_id") or principal.claims.get("preferred_username") or principal.subject
+                            if proof.agent_id != identity:
+                                self._json(403, {"error": "agent_identity_mismatch"})
+                                return
                         try:
                             proof_id = dispatcher.record_proof(proof)
                         except KeyError:
@@ -195,4 +227,8 @@ class DispatchAPI:
                 except BadRequest as exc:
                     self._json(400, {"error": "bad_request", "detail": str(exc)})
 
+        if host == "::1":
+            class IPv6LoopbackServer(ThreadingHTTPServer):
+                address_family = socket.AF_INET6
+            return IPv6LoopbackServer((host, port), Handler)
         return ThreadingHTTPServer((host, port), Handler)
