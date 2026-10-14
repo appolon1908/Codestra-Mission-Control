@@ -1,5 +1,6 @@
 from mission_control.api_catalog import APICatalog
 
+
 def test_catalog_has_reusable_control_plane_surfaces():
  c=APICatalog(); paths=c.document()["paths"]
  for p in ("/platform/v1/services","/platform/v1/connectors","/platform/v1/events",

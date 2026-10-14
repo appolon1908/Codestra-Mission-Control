@@ -1,10 +1,11 @@
 from mission_control.development_guard import DevelopmentEvidence, DevelopmentGuard, GuardState
 
+
 def good(**overrides):
-    data=dict(task_id="T1",local_head="h1",expected_base_sha="b1",remote_base_sha="b1",
-              branch="mission/t1",upstream="origin/mission/t1",dirty_count=0,
-              headers={"X-Codestra-Service":"middleware"},required_headers={"X-Codestra-Service":"middleware"},
-              ci_required=("governance","tests"),ci_green=("governance","tests"),heartbeat_current=True)
+    data={"task_id": "T1","local_head": "h1","expected_base_sha": "b1","remote_base_sha": "b1",
+              "branch": "mission/t1","upstream": "origin/mission/t1","dirty_count": 0,
+              "headers": {"X-Codestra-Service":"middleware"},"required_headers": {"X-Codestra-Service":"middleware"},
+              "ci_required": ("governance","tests"),"ci_green": ("governance","tests"),"heartbeat_current": True}
     data.update(overrides); return DevelopmentEvidence(**data)
 
 def test_answers_core_tracking_questions():

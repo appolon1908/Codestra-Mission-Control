@@ -1,4 +1,10 @@
-from mission_control.continuous_flow import ContinuousFlow, FlowAction, FlowContext, required_test_profile
+from mission_control.continuous_flow import (
+    ContinuousFlow,
+    FlowAction,
+    FlowContext,
+    required_test_profile,
+)
+
 
 def test_implementation_continues_then_hands_to_review():
     flow=ContinuousFlow()

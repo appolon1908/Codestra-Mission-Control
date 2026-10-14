@@ -149,7 +149,7 @@ class ImplementationAPI:
                             },
                         )
                         return
-                    except Exception as exc:  # pragma: no cover - DB uniqueness guard
+                    except Exception as exc:  # noqa: BLE001 - database write boundary; pragma: no cover
                         self._json(
                             409,
                             {
