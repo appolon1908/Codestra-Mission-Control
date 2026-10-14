@@ -132,21 +132,21 @@ class MissionActivities:
 
 
 if activity is not None:
-    MissionActivities.evaluate_mission = activity.defn(
-        name="evaluate_mission"
-    )(MissionActivities.evaluate_mission)
-    MissionActivities.dispatch_next_agent = activity.defn(
-        name="dispatch_next_agent"
-    )(MissionActivities.dispatch_next_agent)
-    MissionActivities.request_review = activity.defn(
-        name="request_review"
-    )(MissionActivities.request_review)
+    MissionActivities.evaluate_mission = activity.defn(name="evaluate_mission")(
+        MissionActivities.evaluate_mission
+    )
+    MissionActivities.dispatch_next_agent = activity.defn(name="dispatch_next_agent")(
+        MissionActivities.dispatch_next_agent
+    )
+    MissionActivities.request_review = activity.defn(name="request_review")(
+        MissionActivities.request_review
+    )
     MissionActivities.request_successor_implementation = activity.defn(
         name="request_successor_implementation"
     )(MissionActivities.request_successor_implementation)
-    MissionActivities.workflow_signal = activity.defn(
-        name="workflow_signal"
-    )(MissionActivities.workflow_signal)
+    MissionActivities.workflow_signal = activity.defn(name="workflow_signal")(
+        MissionActivities.workflow_signal
+    )
 
 
 async def run_worker(config: TemporalRuntimeConfig) -> None:

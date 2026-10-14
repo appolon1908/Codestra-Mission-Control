@@ -33,10 +33,17 @@ class FlowDecision:
     reasons: tuple[str, ...] = ()
 
 
-SAFE_AUTO_REMEDIATIONS = frozenset({
-    "stale_base_sha", "wrong_header", "missing_test", "failing_gate",
-    "format_failure", "lint_failure", "typecheck_failure",
-})
+SAFE_AUTO_REMEDIATIONS = frozenset(
+    {
+        "stale_base_sha",
+        "wrong_header",
+        "missing_test",
+        "failing_gate",
+        "format_failure",
+        "lint_failure",
+        "typecheck_failure",
+    }
+)
 
 
 class ContinuousFlow:
@@ -51,11 +58,21 @@ class ContinuousFlow:
         if ctx.safe_remediations:
             return FlowDecision(FlowAction.AUTO_REMEDIATE, ctx.safe_remediations)
         if ctx.lane == "IMPLEMENTATION":
-            return FlowDecision(FlowAction.HANDOFF_REVIEW if ctx.implementation_done else FlowAction.CONTINUE_IMPLEMENTATION)
+            return FlowDecision(
+                FlowAction.HANDOFF_REVIEW
+                if ctx.implementation_done
+                else FlowAction.CONTINUE_IMPLEMENTATION
+            )
         if ctx.lane == "REVIEW":
-            return FlowDecision(FlowAction.HANDOFF_TESTING if ctx.review_done else FlowAction.CONTINUE_IMPLEMENTATION)
+            return FlowDecision(
+                FlowAction.HANDOFF_TESTING
+                if ctx.review_done
+                else FlowAction.CONTINUE_IMPLEMENTATION
+            )
         if ctx.lane == "TESTING":
-            return FlowDecision(FlowAction.CERTIFICATION if ctx.testing_done else FlowAction.CONTINUE_IMPLEMENTATION)
+            return FlowDecision(
+                FlowAction.CERTIFICATION if ctx.testing_done else FlowAction.CONTINUE_IMPLEMENTATION
+            )
         if ctx.certified:
             return FlowDecision(FlowAction.NEXT_TASK)
         return FlowDecision(FlowAction.CONTINUE_IMPLEMENTATION)

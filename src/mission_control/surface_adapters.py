@@ -153,7 +153,7 @@ class GitHubCheckpointAdapter(ControlSurfaceAdapter):
                 self._headers(),
                 None,
             )
-            head = ((payload.get("head") or {}).get("sha"))
+            head = (payload.get("head") or {}).get("sha")
             state = str(payload.get("state") or "UNKNOWN").upper()
             return SurfaceObservation(Surface.GITHUB, True, state, head)
         except Exception as exc:  # noqa: BLE001
@@ -170,10 +170,7 @@ class GitHubCheckpointAdapter(ControlSurfaceAdapter):
             return state
         try:
             self.requester(
-                (
-                    f"https://api.github.com/repos/{self.repo}/issues/"
-                    f"{self.pr_number}/comments"
-                ),
+                (f"https://api.github.com/repos/{self.repo}/issues/{self.pr_number}/comments"),
                 "POST",
                 self._headers(),
                 {"body": _checkpoint_text(checkpoint)},
@@ -211,9 +208,7 @@ class LinearCheckpointAdapter(ControlSurfaceAdapter):
 
     def read_state(self, mission_id: str) -> SurfaceObservation:
         body = {
-            "query": (
-                "query($id:String!){issue(id:$id){id identifier state{name}}}"
-            ),
+            "query": ("query($id:String!){issue(id:$id){id identifier state{name}}}"),
             "variables": {"id": self.issue_id},
         }
         try:
@@ -223,8 +218,8 @@ class LinearCheckpointAdapter(ControlSurfaceAdapter):
                 self._headers(),
                 body,
             )
-            issue = ((payload.get("data") or {}).get("issue") or {})
-            state = ((issue.get("state") or {}).get("name") or "UNKNOWN")
+            issue = (payload.get("data") or {}).get("issue") or {}
+            state = (issue.get("state") or {}).get("name") or "UNKNOWN"
             return SurfaceObservation(Surface.LINEAR, True, state)
         except Exception as exc:  # noqa: BLE001
             return SurfaceObservation(
@@ -236,10 +231,7 @@ class LinearCheckpointAdapter(ControlSurfaceAdapter):
 
     def publish_checkpoint(self, checkpoint: CheckpointEnvelope) -> SurfaceObservation:
         body = {
-            "query": (
-                "mutation($input:CommentCreateInput!){"
-                "commentCreate(input:$input){success}}"
-            ),
+            "query": ("mutation($input:CommentCreateInput!){commentCreate(input:$input){success}}"),
             "variables": {
                 "input": {
                     "issueId": self.issue_id,
@@ -254,9 +246,7 @@ class LinearCheckpointAdapter(ControlSurfaceAdapter):
                 self._headers(),
                 body,
             )
-            success = bool(
-                ((payload.get("data") or {}).get("commentCreate") or {}).get("success")
-            )
+            success = bool(((payload.get("data") or {}).get("commentCreate") or {}).get("success"))
             if not success:
                 return SurfaceObservation(Surface.LINEAR, False, "ERROR", checkpoint.head_sha)
             return SurfaceObservation(

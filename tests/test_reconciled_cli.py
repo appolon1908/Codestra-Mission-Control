@@ -9,5 +9,9 @@ def test_reconciled_cli_exposes_feature_and_main_commands():
         text=True, capture_output=True, check=False,
     )
     assert result.returncode == 0, result.stderr
-    for command in ["dispatch-proof","dispatch-run","dispatch-state","dispatch-serve","node-probe","record-evidence","sync-observe","implementation-proof"]:
+    for command in [
+        "dispatch-proof", "dispatch-run", "dispatch-state", "dispatch-serve",
+        "inventory-scan", "inventory-drift", "serve-inventory-api",
+        "node-probe", "record-evidence", "sync-observe", "implementation-proof",
+    ]:
         assert command in result.stdout
