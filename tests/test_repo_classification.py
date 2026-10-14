@@ -1,4 +1,8 @@
-from mission_control.repo_classification import RepoClassification, classify_values
+import subprocess
+
+import pytest
+
+from mission_control.repo_classification import RepoClassification, classify_values, inspect_repo
 
 
 def classify(**overrides):
@@ -6,7 +10,7 @@ def classify(**overrides):
         "path": "/repo",
         "head_sha": "a" * 40,
         "branch": "main",
-        "origin_url": "https://github.com/ingtrader21-spec/example.git",
+        "origin_url": "https://github.com/appolon1908/example.git",
         "dirty_count": 0,
         "ahead": 0,
         "behind": 0,
@@ -44,4 +48,34 @@ def test_uninitialized_and_no_origin_are_explicit():
 def test_wrong_github_owner_fails_closed():
     snapshot = classify(origin_url="git@github.com:someone-else/example.git")
     assert snapshot.classification is RepoClassification.WRONG_OWNER
-    assert "expected ingtrader21-spec" in snapshot.reason
+    assert "expected appolon1908" in snapshot.reason
+
+
+@pytest.mark.parametrize("ahead,behind", [(None, None), (0, None), (None, 0), (-1, 0)])
+def test_unknown_or_invalid_comparison_is_not_synced(ahead, behind):
+    assert classify(ahead=ahead, behind=behind).classification is RepoClassification.INSPECTION_FAILED
+
+
+def test_dirty_work_is_preserved_even_without_upstream_comparison():
+    assert classify(dirty_count=1, ahead=None, behind=None).classification is RepoClassification.DIRTY_PRESERVE
+
+
+def test_missing_upstream_is_not_synced(tmp_path):
+    for args in [
+        ["init", "-b", "main"],
+        ["-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "--allow-empty", "-m", "base"],
+        ["remote", "add", "origin", "https://github.com/appolon1908/example.git"],
+    ]:
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+    snapshot = inspect_repo(tmp_path)
+    assert snapshot.classification is RepoClassification.INSPECTION_FAILED
+    assert snapshot.ahead is None and snapshot.behind is None
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError("git unavailable"), subprocess.TimeoutExpired("git", 10)])
+def test_unavailable_git_is_isolated_as_inspection_failure(tmp_path, error):
+    def runner(command, cwd):
+        raise error
+
+    snapshot = inspect_repo(tmp_path, runner=runner)
+    assert snapshot.classification is RepoClassification.INSPECTION_FAILED

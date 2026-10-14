@@ -62,7 +62,7 @@ def classify_values(
     dirty_count: int,
     ahead: int | None,
     behind: int | None,
-    expected_owner: str = "ingtrader21-spec",
+    expected_owner: str = "appolon1908",
 ) -> RepoSnapshot:
     if not head_sha:
         return RepoSnapshot(
@@ -122,7 +122,14 @@ def classify_values(
             "working tree contains local changes; preserve before reconciliation",
         )
 
-    if (ahead or 0) > 0 and (behind or 0) > 0:
+    if type(ahead) is not int or type(behind) is not int or ahead < 0 or behind < 0:
+        return RepoSnapshot(
+            path, head_sha, branch, origin_url, dirty_count, ahead, behind,
+            RepoClassification.INSPECTION_FAILED,
+            "upstream comparison is unavailable or invalid",
+        )
+
+    if ahead > 0 and behind > 0:
         return RepoSnapshot(
             path,
             head_sha,
@@ -176,7 +183,23 @@ def inspect_repo(
     path: str | Path,
     *,
     runner: Runner = _run,
-    expected_owner: str = "ingtrader21-spec",
+    expected_owner: str = "appolon1908",
+) -> RepoSnapshot:
+    try:
+        return _inspect_repo(path, runner=runner, expected_owner=expected_owner)
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        return RepoSnapshot(
+            str(path), None, None, None, 0, None, None,
+            RepoClassification.INSPECTION_FAILED,
+            f"git inspection failed: {type(exc).__name__}",
+        )
+
+
+def _inspect_repo(
+    path: str | Path,
+    *,
+    runner: Runner,
+    expected_owner: str,
 ) -> RepoSnapshot:
     root = Path(path).resolve()
 
