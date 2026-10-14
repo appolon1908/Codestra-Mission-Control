@@ -62,3 +62,29 @@ HTTP API (GET only, repositories addressed by registry name):
 - `GET /platform/v1/repo-sync/repositories`
 - `GET /platform/v1/repo-sync/repositories/{name}[?live=1]`
 - `GET /platform/v1/repo-sync/repositories/{name}/readiness?remote=<remote>[&live=1]`
+
+## Worker nodes (CORE-NODE-02)
+
+Worker nodes register durable capabilities (lanes, providers, worktree root,
+tools) and report heartbeat plus provider-auth status. Every node must carry the
+`builder` lane; review-only nodes are rejected. Payloads containing
+secret-bearing keys are rejected, and auth details are redacted before storage.
+
+    python -m mission_control.cli --db .runtime/mission-control.db node-probe --node core-node-02 --lane builder --lane reviewer --lane verifier --worktree-root /home/codestra/Worktrees
+    python -m mission_control.cli --db .runtime/mission-control.db node-status --node core-node-02
+    python -m mission_control.cli --db .runtime/mission-control.db serve-worker-node-api --port 8791
+
+HTTP API (`127.0.0.1` by default):
+
+- `GET /health`
+- `GET /platform/v1/worker-nodes`
+- `GET|PUT /platform/v1/worker-nodes/{node_id}`
+- `POST /platform/v1/worker-nodes/{node_id}/heartbeat`
+- `GET /platform/v1/worker-nodes/{node_id}/readiness`
+- `GET /platform/v1/worker-nodes/{node_id}/provider-auth`
+- `PUT /platform/v1/worker-nodes/{node_id}/provider-auth/{provider}`
+
+Readiness is `READY`, `DEGRADED` (implementation-ready with warnings) or
+`NOT_READY`. Implementation work requires a fresh heartbeat (300s), git, a
+writable worktree root, at least one provider authenticated within the last
+hour, and production effects disabled.
