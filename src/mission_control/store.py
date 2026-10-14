@@ -853,12 +853,14 @@ class MissionStore:
                     _iso_now(),
                 ),
             )
+            checkpoint_id = int(cursor.lastrowid)
             self._event(
                 conn,
                 mission_id,
                 "CHECKPOINT_RECORDED",
                 agent_id,
                 {
+                    "checkpoint_id": checkpoint_id,
                     "state": state,
                     "head_sha": head_sha,
                     "dirty_count": dirty_count,
@@ -867,7 +869,7 @@ class MissionStore:
                 },
             )
             conn.execute("COMMIT")
-            return int(cursor.lastrowid)
+            return checkpoint_id
 
     def record_surface_observation(
         self,

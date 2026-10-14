@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .adapters.claude import ClaudeAdapter
 from .adapters.codex import CodexAdapter
+from .checkpoint_dispatch import CheckpointDispatcher
 from .scheduler import MissionScheduler, WorkerSlot
 from .store import MissionStore
 from .watchdog import EscalationPolicy
@@ -97,6 +98,8 @@ def main() -> int:
             owner_decision_after_seconds=args.owner_decision_after_seconds,
         ),
     )
+    dispatcher = CheckpointDispatcher(scheduler.store)
+
     if args.api_port is not None:
         server = WatchdogAPI(
             scheduler.monitor,
@@ -107,8 +110,18 @@ def main() -> int:
         host, port = server.server_address[:2]
         print(json.dumps({"watchdog_api": f"http://{host}:{port}"}), flush=True)
     while True:
+        decisions = dispatcher.run()
         snapshot = scheduler.tick()
-        print(json.dumps(asdict(snapshot), sort_keys=True), flush=True)
+        print(
+            json.dumps(
+                {
+                    "dispatch_decisions": [asdict(decision) for decision in decisions],
+                    "snapshot": asdict(snapshot),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
         if args.once:
             return 0
         time.sleep(max(args.interval, 5))
