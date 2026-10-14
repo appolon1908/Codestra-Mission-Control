@@ -67,6 +67,43 @@ def _provider_probes(store: MissionStore, runtime_root: Path, providers: list[st
     return probes
 
 
+def _run_repo_inspection(args: argparse.Namespace) -> None:
+    inspector = RepoSyncInspector()
+    if args.command == "auth-readiness":
+        auth = inspector.github_auth()
+        print(
+            json.dumps(
+                {
+                    "github": {
+                        "state": auth.state.value,
+                        "detail": auth.detail,
+                        "account": auth.account,
+                    },
+                    "self_hosted_remote": SELF_HOSTED_REMOTE,
+                    "self_hosted_requires_github_auth": False,
+                },
+                sort_keys=True,
+            )
+        )
+        return
+    try:
+        if args.command == "repo-sync-status":
+            report = inspector.report(args.repo, live=args.live)
+            print(json.dumps(report.to_dict(), sort_keys=True))
+            return
+        status = inspector.status(args.repo, live=args.live)
+    except RepoSyncError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
+        raise SystemExit(3) from exc
+    sync = status.remote(args.remote)
+    auth = inspector.github_auth() if sync and sync.kind == "GITHUB" else None
+    decision = inspector.publish_decision(status, args.remote, auth)
+    print(json.dumps(asdict(decision), sort_keys=True))
+    if decision.readiness == Readiness.BLOCKED:
+        raise SystemExit(2)
+    return
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="codestra-mission-control")
     parser.add_argument("--db", default=".runtime/mission-control.db")
@@ -285,6 +322,9 @@ def main() -> None:
     node_api.add_argument("--port", type=int, default=8791)
 
     args = parser.parse_args()
+    if args.command in {"repo-sync-status", "publish-readiness", "auth-readiness"}:
+        _run_repo_inspection(args)
+        return
     store = _store(args.db)
 
     if args.command == "init":
@@ -689,42 +729,6 @@ def main() -> None:
                 sort_keys=True,
             )
         )
-        return
-
-    if args.command in {"repo-sync-status", "publish-readiness", "auth-readiness"}:
-        inspector = RepoSyncInspector()
-        if args.command == "auth-readiness":
-            auth = inspector.github_auth()
-            print(
-                json.dumps(
-                    {
-                        "github": {
-                            "state": auth.state.value,
-                            "detail": auth.detail,
-                            "account": auth.account,
-                        },
-                        "self_hosted_remote": SELF_HOSTED_REMOTE,
-                        "self_hosted_requires_github_auth": False,
-                    },
-                    sort_keys=True,
-                )
-            )
-            return
-        try:
-            if args.command == "repo-sync-status":
-                report = inspector.report(args.repo, live=args.live)
-                print(json.dumps(report.to_dict(), sort_keys=True))
-                return
-            status = inspector.status(args.repo, live=args.live)
-        except RepoSyncError as exc:
-            print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
-            raise SystemExit(3) from exc
-        sync = status.remote(args.remote)
-        auth = inspector.github_auth() if sync and sync.kind == "GITHUB" else None
-        decision = inspector.publish_decision(status, args.remote, auth)
-        print(json.dumps(asdict(decision), sort_keys=True))
-        if decision.readiness == Readiness.BLOCKED:
-            raise SystemExit(2)
         return
 
     if args.command == "serve-repo-sync-api":
