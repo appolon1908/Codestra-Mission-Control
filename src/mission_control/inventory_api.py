@@ -56,7 +56,8 @@ class InventoryAPI:
         except ValueError:
             raise ValueError("inventory API must bind to a literal loopback or tailnet address") from None
         if not (
-            address.is_loopback
+            address in ip_network("127.0.0.0/8")
+            or address in ip_network("::1/128")
             or address in ip_network("100.64.0.0/10")
             or address in ip_network("fd7a:115c:a1e0::/48")
         ):

@@ -297,3 +297,17 @@ def test_inventory_cli_refuses_public_binding(tmp_path):
     assert result.returncode != 0
     assert "literal loopback or tailnet" in result.stderr
     assert '"listening"' not in result.stdout
+
+
+def test_mapped_loopback_rejected_when_python_classifies_it_as_loopback(monkeypatch):
+    from ipaddress import IPv6Address
+
+    # Match the newer Python behavior observed in GitHub CI.
+    monkeypatch.setattr(IPv6Address, "is_loopback", property(lambda self: True))
+
+    def reject_socket(*args, **kwargs):
+        pytest.fail("IPv4-mapped IPv6 binding reached socket creation")
+
+    monkeypatch.setattr(socket, "socket", reject_socket)
+    with pytest.raises(ValueError, match="literal loopback or tailnet"):
+        InventoryAPI(None, dict).server("::ffff:127.0.0.1")
