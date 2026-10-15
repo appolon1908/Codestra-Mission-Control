@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
 import sys
 import threading
@@ -225,3 +226,74 @@ def test_cli_inventory_scan_and_drift(tmp_path, repo):
     )
     assert bad.returncode == 1
     assert "--repo must be NAME=PATH, got: missing-separator" in bad.stderr
+
+
+@pytest.mark.parametrize("host", [
+    "", " ", "0.0.0.0", "::", "8.8.8.8", "2001:4860:4860::8888",
+    "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.1.1",
+    "100.63.255.255", "100.128.0.0", "fd7a:115c:a1df:ffff::1", "fd7a:115c:a1e1::1",
+    "example.com", "inventory.tail4a23a1.ts.net", "127.0.0.1.evil", "127.1", "[::1]",
+    "::ffff:127.0.0.1",
+])
+def test_inventory_binding_rejects_unsafe_hosts_before_socket_creation(host, monkeypatch):
+    def reject_socket(*args, **kwargs):
+        pytest.fail("unsafe inventory binding reached socket creation")
+
+    monkeypatch.setattr(socket, "socket", reject_socket)
+    api = InventoryAPI(None, dict)
+    with pytest.raises(ValueError, match="literal loopback or tailnet"):
+        api.server(host)
+
+
+@pytest.mark.parametrize("host,family,normalized", [
+    ("localhost", socket.AF_INET, "127.0.0.1"),
+    ("127.0.0.1", socket.AF_INET, "127.0.0.1"),
+    ("127.255.255.255", socket.AF_INET, "127.255.255.255"),
+    ("::1", socket.AF_INET6, "::1"),
+    ("100.64.0.0", socket.AF_INET, "100.64.0.0"),
+    ("100.127.255.255", socket.AF_INET, "100.127.255.255"),
+    ("fd7a:115c:a1e0::", socket.AF_INET6, "fd7a:115c:a1e0::"),
+    ("fd7a:115c:a1e0:ffff:ffff:ffff:ffff:ffff", socket.AF_INET6,
+     "fd7a:115c:a1e0:ffff:ffff:ffff:ffff:ffff"),
+])
+def test_inventory_binding_accepts_private_literals_with_correct_family(
+    host, family, normalized, monkeypatch,
+):
+    from http.server import ThreadingHTTPServer
+
+    opened = []
+
+    def record_server(self, address, handler):
+        opened.append((address, self.address_family))
+
+    monkeypatch.setattr(ThreadingHTTPServer, "__init__", record_server)
+    InventoryAPI(None, dict).server(host, 0)
+    assert opened == [((normalized, 0), family)]
+
+
+def test_inventory_ipv6_loopback_health():
+    if not socket.has_ipv6:
+        pytest.skip("IPv6 unavailable on this host")
+    server = InventoryAPI(None, dict).server("::1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(f"http://[::1]:{server.server_port}/health", timeout=5) as response:
+            assert response.status == 200
+            assert json.load(response) == {"ok": True, "service": "mission-control-inventory-api"}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_inventory_cli_refuses_public_binding(tmp_path):
+    result = subprocess.run(
+        [sys.executable, "-m", "mission_control.cli", "--db", str(tmp_path / "cli.db"),
+         "serve-inventory-api", "--host", "0.0.0.0", "--port", "0"],
+        text=True, capture_output=True, timeout=10, check=False,
+    )
+    assert result.returncode != 0
+    assert "literal loopback or tailnet" in result.stderr
+    assert '"listening"' not in result.stdout
