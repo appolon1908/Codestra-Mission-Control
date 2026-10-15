@@ -194,6 +194,15 @@ def test_authenticated_http_returns_real_postgres_rows(tmp_path):
                 assert any(x["repository"] == "Middleware-" for x in data[key_name])
             if key_name == "lanes":
                 assert len(data[key_name]) >= 1
+        with urlopen(
+            Request(root + "/platform/v1/dashboard/openbao",
+                    headers={"Authorization": "Bearer " + token}), timeout=5,
+        ) as response:
+            openbao = json.load(response)
+            assert response.status == 200
+        assert openbao["mode"] == "READ_ONLY"
+        assert openbao["release_certification"] == "NOT_CHECKED"
+        assert all(value is None for value in openbao["pr_summary"].values())
         with pytest.raises(HTTPError) as exc:
             urlopen(root + "/platform/v1/dashboard/repositories", timeout=5)
         assert exc.value.code == 401
@@ -236,3 +245,15 @@ def test_future_agent_heartbeat_is_not_active(monkeypatch):
     agent = model.agents()[0]
     assert agent["live"] is False
     assert agent["state"] == "OFFLINE"
+
+
+def test_openbao_routes_keep_dashboard_authorization_and_fail_closed(dashboard, monkeypatch):
+    path = "/platform/v1/dashboard/openbao"
+    assert dashboard(path, bearer=False)[0] == 401
+    assert dashboard(path, roles=("Viewer",))[0] == 403
+    status, payload, _ = dashboard(path)
+    assert status == 503
+    assert payload["error_code"] == "SOURCE_UNAVAILABLE"
+    monkeypatch.delenv("OPENBAO_HEALTH_URL", raising=False)
+    monkeypatch.delenv("OPENBAO_HEALTH_ALLOWED_HOSTS", raising=False)
+    assert dashboard(path + "/health")[1] == {"state": "NOT_CONFIGURED"}

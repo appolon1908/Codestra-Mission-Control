@@ -21,6 +21,8 @@ from .discovery_engine import DiscoveryEngine
 from .local_work_discovery import LocalWorkDiscovery
 from .monitoring_evidence import snapshot as monitoring_snapshot
 from .monitoring_lock_certificate import snapshot as monitoring_lock_snapshot
+from .openbao_health import probe as openbao_health_probe
+from .openbao_read_model import snapshot as openbao_snapshot
 from .oversight import OversightStore
 from .realtime_events import RealtimeEvent, RealtimePublisher
 from .repository_sync import RepositorySyncStore
@@ -209,6 +211,20 @@ class DashboardAPI:
                     return self.send_json(200,dashboard_contract())
                 if p.path==PREFIX+"/health":
                     return self.send_json(200,{"status":"ok","service":"agent-brain-dashboard-api"})
+                if p.path==PREFIX+"/openbao/health":
+                    if not self._principal("mission:read"): return
+                    return self.send_json(200,openbao_health_probe())
+                if p.path==PREFIX+"/openbao":
+                    if not self._principal("mission:read"): return
+                    def read_openbao():
+                        if control is False:
+                            raise SourceUnavailable("read_only_control_plane_dsn_not_configured")
+                        return openbao_snapshot(
+                            control.repositories(),
+                            control.repository("Codestra-OpenBao")["pr_summary"],
+                            control.tasks("Codestra-OpenBao"),
+                        )
+                    return self._control(read_openbao)
                 if p.path==PREFIX+"/repositories":
                     return self._control(lambda:{"repositories":control.repositories(),"source":"postgres_control_plane_readonly"})
                 if p.path==PREFIX+"/local-work":
