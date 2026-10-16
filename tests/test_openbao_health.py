@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+from http.client import HTTPResponse
 from urllib.error import HTTPError
 
 import pytest
@@ -88,6 +89,25 @@ def test_sealed_non_200_response_is_valid_read_only_observation():
     assert value["state"] == "OBSERVED"
     assert value["http_status"] == 503
     assert value["sealed"] is True
+
+
+def test_truncated_chunked_response_is_unavailable():
+    raw = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Transfer-Encoding: chunked\r\n\r\n"
+        b"40\r\n"
+        b'{"initialized":true,"sealed":false}'
+    )
+
+    class MemorySocket:
+        def makefile(self, mode):
+            return io.BytesIO(raw)
+
+    response = HTTPResponse(MemorySocket())
+    response.begin()
+    assert probe(url=URL, allowed_hosts=ALLOWED, opener=FakeOpener(response)) == {
+        "state": "UNAVAILABLE",
+    }
 
 
 @pytest.mark.parametrize("raw", [

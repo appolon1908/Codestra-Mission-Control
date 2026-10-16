@@ -9,6 +9,7 @@ import os
 import re
 import ssl
 from datetime import UTC, datetime
+from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
@@ -78,5 +79,5 @@ def probe(*, url: str | None = None, allowed_hosts: str | None = None, opener=No
             "standby": standby,
             "observed_at": datetime.now(UTC).isoformat(),
         }
-    except (OSError, URLError, ValueError, json.JSONDecodeError):
+    except (OSError, URLError, HTTPException, ValueError, json.JSONDecodeError):
         return {"state": "UNAVAILABLE"}
