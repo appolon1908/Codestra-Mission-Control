@@ -72,3 +72,11 @@ def authorize_merge():
         return decision
 
     return _authorize
+
+
+
+@pytest.fixture(autouse=True)
+def explicit_test_only_auth_mode(monkeypatch):
+    """Tests deliberately opt into legacy local auth; deployed runtime is default-deny."""
+    monkeypatch.setenv("MISSION_CONTROL_ENV", "test")
+    monkeypatch.setenv("MISSION_CONTROL_AUTH_MODE", "disabled")

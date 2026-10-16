@@ -160,11 +160,9 @@ class SyncDecision:
 class ControlSurfaceAdapter(Protocol):
     surface: Surface
 
-    def read_state(self, mission_id: str) -> SurfaceObservation:
-        ...
+    def read_state(self, mission_id: str) -> SurfaceObservation: ...
 
-    def publish_checkpoint(self, checkpoint: CheckpointEnvelope) -> SurfaceObservation:
-        ...
+    def publish_checkpoint(self, checkpoint: CheckpointEnvelope) -> SurfaceObservation: ...
 
 
 class SyncLedger(Protocol):
@@ -174,8 +172,7 @@ class SyncLedger(Protocol):
         observation: SurfaceObservation,
         *,
         agent_id: str | None = None,
-    ) -> SurfaceObservation:
-        ...
+    ) -> SurfaceObservation: ...
 
 
 OwnerCheck = Callable[[str, str], bool]
@@ -397,8 +394,7 @@ class CheckpointFanout:
             conflict = SyncConflict(
                 ConflictKind.OWNERSHIP,
                 tuple(adapter.surface for adapter in self.adapters),
-                f"{agent_id or 'anonymous'} does not own {checkpoint.mission_id}; "
-                "fanout refused",
+                f"{agent_id or 'anonymous'} does not own {checkpoint.mission_id}; fanout refused",
             )
             return reconcile(
                 checkpoint,

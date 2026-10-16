@@ -1,0 +1,184 @@
+{
+  "info": {
+    "name": "Codestra Mission Control \u2014 Authenticated Read-Only Dashboard",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "81a8f9f5-38a1-4ff9-90a9-890210121001"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://dashboard-staging.codestra.co"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "repository",
+      "value": "Middleware-"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/healthz"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP status', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "PostgreSQL readiness",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/readyz"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP status', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard contract",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/platform/v1/dashboard/contract"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP status', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Repository control plane",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/platform/v1/dashboard/repositories"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP status', () => pm.response.to.have.status(200));",
+              "pm.test('Array response', () => pm.expect(pm.response.json().repositories).to.be.an('array'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Live agent records",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/platform/v1/dashboard/agents"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP status', () => pm.response.to.have.status(200));",
+              "pm.test('Array response', () => pm.expect(pm.response.json().agents).to.be.an('array'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Atomic tasks",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/platform/v1/dashboard/tasks?repository={{repository}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP status', () => pm.response.to.have.status(200));",
+              "pm.test('Array response', () => pm.expect(pm.response.json().tasks).to.be.an('array'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Worktrees",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/platform/v1/dashboard/local-work?repository={{repository}}&recent_hours=48"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP status', () => pm.response.to.have.status(200));",
+              "pm.test('Array response', () => pm.expect(pm.response.json().lanes).to.be.an('array'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Unauthenticated request rejected",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/platform/v1/dashboard/repositories",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP status', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

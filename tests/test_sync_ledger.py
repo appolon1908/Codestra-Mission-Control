@@ -50,7 +50,9 @@ def test_ledger_keeps_last_success_and_head_across_outage(tmp_path):
 
     recovered = store.record_surface_observation(
         "PAS-250",
-        SurfaceObservation(Surface.GITHUB, True, "OPEN", "abc123", observed_at=later + timedelta(1)),
+        SurfaceObservation(
+            Surface.GITHUB, True, "OPEN", "abc123", observed_at=later + timedelta(1)
+        ),
     )
     assert recovered.error is None
     assert recovered.last_error_at == later
@@ -129,8 +131,18 @@ def test_cli_sync_observe_requires_lease_and_readback_reports_sources(tmp_path):
     store = make_store(tmp_path)
     db = store.path
     refused = _cli(
-        db, "sync-observe", "--mission", "PAS-250", "--agent", "writer-1",
-        "--surface", "local", "--status", "OK", "--head-sha", "abc123",
+        db,
+        "sync-observe",
+        "--mission",
+        "PAS-250",
+        "--agent",
+        "writer-1",
+        "--surface",
+        "local",
+        "--status",
+        "OK",
+        "--head-sha",
+        "abc123",
         check=False,
     )
     assert refused.returncode != 0
@@ -139,13 +151,34 @@ def test_cli_sync_observe_requires_lease_and_readback_reports_sources(tmp_path):
     LeaseManager(store).claim("PAS-250", "writer-1")
     for surface in ("local", "linear", "github"):
         out = _cli(
-            db, "sync-observe", "--mission", "PAS-250", "--agent", "writer-1",
-            "--surface", surface, "--status", "OK", "--head-sha", "abc123",
+            db,
+            "sync-observe",
+            "--mission",
+            "PAS-250",
+            "--agent",
+            "writer-1",
+            "--surface",
+            surface,
+            "--status",
+            "OK",
+            "--head-sha",
+            "abc123",
         )
         assert json.loads(out.stdout)["source"]["freshness"] == "FRESH"
     _cli(
-        db, "sync-observe", "--mission", "PAS-250", "--agent", "writer-1",
-        "--surface", "notion", "--status", "ERROR", "--unavailable", "--error", "HTTP503",
+        db,
+        "sync-observe",
+        "--mission",
+        "PAS-250",
+        "--agent",
+        "writer-1",
+        "--surface",
+        "notion",
+        "--status",
+        "ERROR",
+        "--unavailable",
+        "--error",
+        "HTTP503",
     )
     out = _cli(db, "sync-readback", "--mission", "PAS-250", "--head-sha", "abc123")
     payload = json.loads(out.stdout)
@@ -153,14 +186,22 @@ def test_cli_sync_observe_requires_lease_and_readback_reports_sources(tmp_path):
     assert decision["state"] == "BLOCKED"
     assert decision["missing"] == ["notion"]
     assert decision["reconciled"] == ["local", "linear", "github"]
-    notion = [s for s in decision["sources"] if s["surface"] == "notion"][0]
+    notion = next(s for s in decision["sources"] if s["surface"] == "notion")
     assert notion["freshness"] == "UNREACHABLE"
     assert notion["error"] == "HTTP503"
     assert notion["last_error_at"] is not None
     assert notion["last_success_at"] is None
 
     expired = _cli(
-        db, "sync-readback", "--mission", "PAS-250", "--head-sha", "abc123",
-        "--required", "local,linear,github", "--max-age-seconds", "0",
+        db,
+        "sync-readback",
+        "--mission",
+        "PAS-250",
+        "--head-sha",
+        "abc123",
+        "--required",
+        "local,linear,github",
+        "--max-age-seconds",
+        "0",
     )
     assert json.loads(expired.stdout)["decision"]["expired"] == ["local", "linear", "github"]
