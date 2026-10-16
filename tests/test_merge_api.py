@@ -8,7 +8,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-from conftest import BASE, HEAD_A, HEAD_B
+from conftest import BASE, HEAD_A, HEAD_B, configure_fixture_controller
 
 from mission_control.lease import LeaseManager
 from mission_control.merge_api import PREFIX, MergeCoordinatorAPI
@@ -23,6 +23,7 @@ def api(tmp_path):
     store = MissionStore(tmp_path / "mission.db")
     store.initialize()
     store.upsert_mission(Mission(MISSION, "repo", "goal", branch="impl/feature"))
+    configure_fixture_controller(store)
     server = MergeCoordinatorAPI(store).server("127.0.0.1", 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -123,6 +124,19 @@ def test_full_merge_coordination_flow_over_http(api):
     status, body, _ = call(base, "GET", f"{mission}/authorization")
     assert body["authorized"] is False
     assert "MERGE_DECISION_STALE_HEAD" in body["reasons"]
+
+
+def test_http_body_cannot_install_controller_verification(api):
+    store, base = api
+    store.controller_gate_provider = None
+    status, decision, _ = call(
+        base, "POST", f"{PREFIX}/missions/{MISSION}/evaluations",
+        snapshot(routing_verified=True, controller_verified=True,
+                 controller_gate_provider={"status": "PASS", "actor": "controller"}),
+    )
+    assert status == 200
+    assert decision["merge_allowed"] is False
+    assert "CONTROLLER_VERIFICATION_UNCONFIGURED" in decision["reasons"]
 
 
 def test_http_input_validation(api):
@@ -254,22 +268,23 @@ def test_cli_merge_gate_exit_codes(tmp_path):
     snap.write_text(json.dumps(snapshot(checks={"ci": "failure"})))
     failed = _cli(db, "merge-evaluate", "--mission", MISSION, "--snapshot-json", f"@{snap}")
     assert failed.returncode == 3
-    assert json.loads(failed.stdout)["next_gate"] == "CI"
+    assert "CHECK_NOT_GREEN:ci=failure" in json.loads(failed.stdout)["reasons"]
     assert _cli(db, "merge-authorization", "--mission", MISSION).returncode == 3
     assert (
         json.loads(_cli(db, "policy", "--mission", MISSION, "--action", "merge").stdout)["allowed"]
         is False
     )
 
-    ready = _cli(
+    unconfigured = _cli(
         db, "merge-evaluate", "--mission", MISSION, "--snapshot-json", json.dumps(snapshot())
     )
-    assert ready.returncode == 0, ready.stdout
-    assert json.loads(ready.stdout)["verdict"] == "MERGE_READY"
-    assert _cli(db, "merge-authorization", "--mission", MISSION).returncode == 0
+    assert unconfigured.returncode == 3, unconfigured.stdout
+    assert json.loads(unconfigured.stdout)["verdict"] == "BLOCKED"
+    assert "CONTROLLER_VERIFICATION_UNCONFIGURED" in json.loads(unconfigured.stdout)["reasons"]
+    assert _cli(db, "merge-authorization", "--mission", MISSION).returncode == 3
     assert (
         json.loads(_cli(db, "policy", "--mission", MISSION, "--action", "merge").stdout)["allowed"]
-        is True
+        is False
     )
 
     classify = _cli(

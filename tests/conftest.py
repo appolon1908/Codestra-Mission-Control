@@ -1,5 +1,8 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
+from mission_control.governed_gates import ControllerGateObservation
 from mission_control.lease import LeaseManager
 from mission_control.merge_coordinator import (
     EvidenceRole,
@@ -11,6 +14,25 @@ from mission_control.merge_coordinator import (
 HEAD_A = "a" * 40
 HEAD_B = "b" * 40
 BASE = "c" * 40
+
+
+class FixtureController:
+    """Synthetic privileged port only; never installed as runtime authority."""
+
+    def verify(self, binding):
+        now = datetime.now(UTC)
+        return ControllerGateObservation(binding, now, now + timedelta(minutes=1), True, True)
+
+
+def configure_fixture_controller(store):
+    # A repository's canonical identity must come from registration, not request JSON.
+    for mission in store.list_missions():
+        store.upsert_repository(
+            mission["repository"], full_name="fixture-owner/" + mission["repository"],
+            local_path=None, origin_url=None, default_branch=None, visibility=None,
+            local_present=False, mission_channel_path=None, workspace_path=None,
+        )
+    store.controller_gate_provider = FixtureController()
 
 
 def clean_snapshot(head_sha=HEAD_A, **overrides):
@@ -30,9 +52,13 @@ def clean_snapshot(head_sha=HEAD_A, **overrides):
     return PullRequestSnapshot.from_dict(payload)
 
 
-def prepare_merge(store, mission_id, *, head_sha=HEAD_A, writer="builder-1", claim=True):
+def prepare_merge(
+    store, mission_id, *, head_sha=HEAD_A, writer="builder-1", claim=True, governed=True
+):
     """Drive a mission through builder head, checkpoint, review and verification."""
     coordinator = MergeCoordinator(store)
+    if governed:
+        configure_fixture_controller(store)
     if claim:
         LeaseManager(store).claim(mission_id, writer)
     coordinator.record_head(mission_id, head_sha, writer)

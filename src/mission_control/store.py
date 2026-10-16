@@ -5,10 +5,12 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
 from .control_sync import Surface, SurfaceObservation
+from .governed_gates import ControllerGateProvider, PromotionBinding, controller_gate_blockers
 from .models import ApprovalLevel, Mission, MissionStatus
 
 
@@ -35,9 +37,12 @@ def _parse_ts(value: str | None) -> datetime | None:
 
 
 class MissionStore:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self, path: str | Path, *, controller_gate_provider: ControllerGateProvider | None = None
+    ) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.controller_gate_provider = controller_gate_provider
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -1262,8 +1267,8 @@ class MissionStore:
                 (mission_id,),
             ).fetchone()
 
-    def merge_authorization(self, mission_id: str) -> dict:
-        """Fail-closed: authorized only by a current MERGE_READY decision on the exact head."""
+    def _local_merge_authorization(self, mission_id: str) -> dict:
+        """Local ledger checks; these alone never constitute merge authorization."""
         mission = self.get_mission(mission_id)
         if not mission:
             raise KeyError(mission_id)
@@ -1279,6 +1284,12 @@ class MissionStore:
                 reasons.append("MERGE_DECISION_BLOCKED")
             if decision["head_sha"] != head:
                 reasons.append("MERGE_DECISION_STALE_HEAD")
+            try:
+                snapshot = json.loads(decision["snapshot_json"])
+                if mission["branch"] and mission["branch"] != snapshot["head_branch"]:
+                    reasons.append("MERGE_DECISION_BRANCH_CHANGED")
+            except (KeyError, TypeError, ValueError):
+                reasons.append("CONTROLLER_BINDING_INVALID")
             with self.connection() as conn:
                 superseding = conn.execute(
                     """
@@ -1299,6 +1310,43 @@ class MissionStore:
             "decision_id": decision["id"] if decision else None,
             "reasons": reasons,
         }
+
+    def promotion_binding(self, mission_id: str, snapshot: dict) -> PromotionBinding:
+        mission = self.get_mission(mission_id)
+        if not mission:
+            raise KeyError(mission_id)
+        return PromotionBinding.from_snapshot(
+            mission, self.get_repository(mission["repository"]), snapshot
+        )
+
+    def merge_authorization(self, mission_id: str) -> dict:
+        """Reacquire controller authority; stored readiness is never a bearer grant."""
+        result = self._local_merge_authorization(mission_id)
+        if not result["authorized"]:
+            return result
+        decision = self.latest_merge_decision(mission_id)
+        try:
+            snapshot = json.loads(decision["snapshot_json"])
+            binding = self.promotion_binding(mission_id, snapshot)
+            if snapshot.get("_governed_binding") != asdict(binding):
+                reasons = ["CONTROLLER_BINDING_UNRECORDED_OR_CHANGED"]
+            else:
+                reasons = list(
+                    controller_gate_blockers(self.controller_gate_provider, binding).values()
+                )
+            # Provider I/O may overlap a new head, evidence, repository or decision.
+            after = self._local_merge_authorization(mission_id)
+            reasons.extend(after["reasons"])
+            if (
+                after["decision_id"] != result["decision_id"]
+                or self.promotion_binding(mission_id, snapshot) != binding
+            ):
+                reasons.append("MERGE_BINDING_CHANGED_DURING_VERIFICATION")
+        except (KeyError, TypeError, ValueError):
+            reasons = ["CONTROLLER_BINDING_INVALID"]
+        result["reasons"] = sorted(set(reasons))
+        result["authorized"] = not reasons
+        return result
 
     def list_leases(self) -> list[sqlite3.Row]:
         with self.connection() as conn:

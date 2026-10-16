@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass, field
 from enum import IntEnum, StrEnum
 from typing import Any
 
+from .governed_gates import controller_gate_blockers
 from .models import ApprovalLevel, MissionStatus
 from .store import MissionStore
 
@@ -52,6 +53,8 @@ class Verdict(StrEnum):
 class Gate(StrEnum):
     NONE = "NONE"
     HUMAN_DECISION = "HUMAN_DECISION"
+    ROUTING = "ROUTING"
+    CONTROLLER = "CONTROLLER"
     CONVERGENCE = "CONVERGENCE"
     BUILDER_RESOLVE = "BUILDER_RESOLVE"
     REVIEW = "REVIEW"
@@ -63,6 +66,8 @@ class Gate(StrEnum):
 # Gate precedence when several blockers apply: the earliest gate must clear first.
 GATE_ORDER = (
     Gate.HUMAN_DECISION,
+    Gate.ROUTING,
+    Gate.CONTROLLER,
     Gate.CONVERGENCE,
     Gate.BUILDER_RESOLVE,
     Gate.REVIEW,
@@ -380,6 +385,23 @@ class MergeCoordinator:
     def evaluate(self, mission_id: str, snapshot: PullRequestSnapshot) -> MergeDecision:
         mission = self._mission(mission_id)
         blockers: list[tuple[Gate, str]] = []
+        recorded_snapshot = asdict(snapshot)
+        binding = self.store.promotion_binding(mission_id, recorded_snapshot)
+        recorded_snapshot["_governed_binding"] = asdict(binding)
+        blockers.extend(
+            (Gate(gate), reason)
+            for gate, reason in controller_gate_blockers(
+                self.store.controller_gate_provider, binding
+            ).items()
+        )
+        # Verification can perform network I/O. Do not evaluate an old mission
+        # head/identity if local state changed while the provider was acquiring it.
+        current = self._mission(mission_id)
+        if (
+            any(current[key] != mission[key] for key in ("head_sha", "branch", "repository"))
+            or self.store.promotion_binding(mission_id, asdict(snapshot)) != binding
+        ):
+            blockers.append((Gate.CONTROLLER, "MERGE_BINDING_CHANGED_DURING_VERIFICATION"))
 
         for name in ("head_sha", "base_sha", "target_sha"):
             if not SHA_RE.match(getattr(snapshot, name)):
@@ -468,7 +490,7 @@ class MergeCoordinator:
             conflict_class=int(conflict.conflict_class),
             next_gate=next_gate.value,
             reasons=list(reasons),
-            snapshot=asdict(snapshot),
+            snapshot=recorded_snapshot,
             next_status=next_status,
         )
         if ready:
@@ -492,12 +514,22 @@ class MergeCoordinator:
         row = self.store.latest_merge_decision(mission_id)
         if not row:
             return None
+        authorization = self.authorization(mission_id)
+        if (
+            authorization["decision_id"] != row["id"]
+            or authorization["head_sha"] != row["head_sha"]
+        ):
+            authorization["authorized"] = False
+            authorization["reasons"] = sorted(set(
+                authorization["reasons"] + ["MERGE_DECISION_SUPERSEDED"]
+            ))
         return {
             "mission_id": mission_id,
             "decision_id": row["id"],
             "head_sha": row["head_sha"],
             "verdict": row["verdict"],
-            "merge_allowed": row["verdict"] == Verdict.MERGE_READY.value,
+            "merge_allowed": authorization["authorized"],
+            "authorization_reasons": authorization["reasons"],
             "conflict_class": row["conflict_class"],
             "next_gate": row["next_gate"],
             "reasons": json.loads(row["reasons_json"]),
