@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import http.client
 import json
 import os
+import socket
 import subprocess
 import sys
 import threading
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime, timedelta
+from http.server import ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -249,6 +253,60 @@ def test_server_refuses_public_bind():
         FabricAPI(runtime).server("0.0.0.0", 0)
 
 
+@pytest.mark.parametrize(
+    "host,family",
+    [
+        ("127.0.0.1", socket.AF_INET),
+        ("localhost", socket.AF_INET),
+        ("100.64.0.1", socket.AF_INET),
+        ("mc.t.ts.net", socket.AF_INET),
+        ("::1", socket.AF_INET6),
+        ("fd7a:115c:a1e0::1", socket.AF_INET6),
+    ],
+)
+def test_server_selects_address_family_for_allowed_hosts(host, family, monkeypatch):
+    # Tailnet addresses need not be assigned to the machine running the tests.
+    monkeypatch.setattr(ThreadingHTTPServer, "server_bind", lambda self: None)
+    monkeypatch.setattr(ThreadingHTTPServer, "server_activate", lambda self: None)
+    runtime = FabricRuntime(INVENTORY, {}, status)
+    server = FabricAPI(runtime).server(host)
+    try:
+        assert server.address_family == family
+    finally:
+        server.server_close()
+
+
+def test_ipv6_loopback_serves_health_and_private_runtime():
+    runtime = FabricRuntime(
+        INVENTORY,
+        load_policy_file(CONFIG / "tailscale.policy-plan.json"),
+        status,
+        clock=lambda: NOW,
+    )
+    server = FabricAPI(runtime).server("::1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection("::1", server.server_address[1], timeout=3)
+    try:
+        connection.request("GET", "/health")
+        response = connection.getresponse()
+        assert response.status == 200
+        assert json.load(response) == {"ok": True, "service": "mission-control-fabric-api"}
+        connection.request("GET", "/platform/v1/fabric/runtime")
+        response = connection.getresponse()
+        assert response.status == 200
+        runtime_payload = json.load(response)
+        assert runtime_payload["bind"]["host"] == "::1"
+        assert runtime_payload["bind"]["private"] is True
+        assert runtime_payload["read_only"] is True
+        assert runtime_payload["health"]["state"] == "healthy"
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_runtime_caches_status_reads():
     calls = []
     clock = {"now": NOW}
@@ -338,3 +396,25 @@ def test_fabric_cli_refuses_public_bind(tmp_path):
     body = json.loads(result.stdout)
     assert body["ok"] is False
     assert body["error"].startswith("public_bind_forbidden: 0.0.0.0")
+
+
+@pytest.mark.parametrize(
+    "host,expected_hostname",
+    [("127.0.0.1", "127.0.0.1"), ("localhost", "127.0.0.1"), ("::1", "::1")],
+)
+def test_fabric_cli_emits_parseable_listening_url(host, expected_hostname, monkeypatch, capsys):
+    from mission_control import cli
+
+    # Keep the real bind and startup output, but do not enter the blocking event loop.
+    monkeypatch.setattr(ThreadingHTTPServer, "serve_forever", lambda self: None)
+    monkeypatch.setattr(sys, "argv", [
+        "mission-control", "serve-fabric-api", "--host", host, "--port", "0",
+        "--inventory", str(CONFIG / "tailscale.nodes.json"),
+        "--policy", str(CONFIG / "tailscale.policy-plan.json"),
+    ])
+    cli.main()
+    listening = json.loads(capsys.readouterr().out)
+    parsed = urlsplit(listening["url"])
+    assert parsed.scheme == "http"
+    assert parsed.hostname == expected_hostname
+    assert parsed.port is not None and parsed.port > 0

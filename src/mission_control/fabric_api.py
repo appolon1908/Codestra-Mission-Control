@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import socket
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from ipaddress import ip_address
 from typing import Any
 from urllib.parse import unquote, urlparse
 
@@ -230,4 +232,12 @@ class FabricAPI:
                     return
                 self._json(404, {"error": "not_found"})
 
-        return ThreadingHTTPServer((host, port), Handler)
+        try:
+            family = socket.AF_INET6 if ip_address(host).version == 6 else socket.AF_INET
+        except ValueError:
+            family = socket.AF_INET
+
+        class Server(ThreadingHTTPServer):
+            address_family = family
+
+        return Server((host, port), Handler)
