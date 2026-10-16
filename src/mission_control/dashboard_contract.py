@@ -1,6 +1,16 @@
 from __future__ import annotations
 
 DASHBOARD_ENDPOINTS = {
+    "openbao": {
+        "method": "GET",
+        "path": "/platform/v1/dashboard/openbao",
+        "ui": "OpenBao read-only reconciler status, PR summary, mission workstreams; requires mission:read",
+    },
+    "openbao_health": {
+        "method": "GET",
+        "path": "/platform/v1/dashboard/openbao/health",
+        "ui": "Operator-requested, server-side OpenBao system health GET; mission:read; no secret access",
+    },
     "repositories": {
         "method": "GET",
         "path": "/platform/v1/dashboard/repositories",
