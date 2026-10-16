@@ -541,7 +541,7 @@ class InventoryScanner:
         now: datetime,
         details: dict[str, Any],
     ) -> dict[str, Any]:
-        last_seen = _parse_time(node.last_seen)
+        last_seen = node.last_seen
         details = {
             **details,
             "observed_hostname": node.hostname,
