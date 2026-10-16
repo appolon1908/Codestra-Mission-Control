@@ -1,10 +1,12 @@
 {
   "schema": "codestra.deployment-contract.v1",
-  "repository": "ingtrader21-spec/Codestra-Mission-Control",
-  "role": "control-plane-application",
+  "repository": "appolon1908/Codestra-Mission-Control",
+  "owner": "appolon1908",
+  "role": "Data/platform",
   "standalone_required": true,
   "canonical_integration": {
-    "public_edge": "Caddy",
+    "ingress": "tailnet-only",
+    "public_edge": null,
     "api_gateway": "Kong",
     "middleware_runtime": "middleware-integration-api:8095",
     "command_api": "/platform/v1",
