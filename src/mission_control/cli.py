@@ -985,7 +985,7 @@ def main() -> None:
 
     if args.command == "serve-repo-sync-api":
         server = RepoSyncAPI(store, RepoSyncInspector()).server(args.host, args.port)
-        host, port = server.server_address
+        host, port = server.server_address[:2]
         print(
             json.dumps(
                 {

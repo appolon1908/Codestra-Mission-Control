@@ -397,3 +397,39 @@ def test_api_accepts_private_binding_with_correct_address_family(host, monkeypat
         assert server.address_family == (socket.AF_INET6 if ":" in host else socket.AF_INET)
     finally:
         server.server_close()
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1"])
+def test_cli_repo_sync_startup_reads_ipv4_and_ipv6_socket_addresses(
+    host, tmp_path, monkeypatch, capsys,
+):
+    import socket
+    from http.server import ThreadingHTTPServer
+
+    from mission_control.cli import main
+
+    if host == "::1" and not socket.has_ipv6:
+        pytest.skip("IPv6 unavailable on this host")
+    opened = []
+    original_server = RepoSyncAPI.server
+
+    def capture_server(self, address, port):
+        server = original_server(self, address, port)
+        opened.append(server)
+        return server
+
+    monkeypatch.setattr(RepoSyncAPI, "server", capture_server)
+    monkeypatch.setattr(ThreadingHTTPServer, "serve_forever", lambda self: None)
+    monkeypatch.setattr(sys, "argv", [
+        "mission-control", "--db", str(tmp_path / "startup.db"),
+        "serve-repo-sync-api", "--host", host, "--port", "0",
+    ])
+    try:
+        main()
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["service"] == "mission-control-repo-sync-api"
+        assert payload["host"] == host
+        assert payload["port"] == opened[0].server_port
+    finally:
+        for server in opened:
+            server.server_close()
