@@ -38,15 +38,23 @@ class ControlPlaneReadModel:
             )
         except psycopg2.Error as exc:
             raise SourceUnavailable("read_only_control_plane_unavailable") from exc
+        completed = False
         try:
             conn.set_session(readonly=True, autocommit=False)
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 yield cursor
+            completed = True
         except psycopg2.Error as exc:
             raise SourceUnavailable("read_only_control_plane_query_failed") from exc
         finally:
-            conn.rollback()
-            conn.close()
+            try:
+                try:
+                    conn.rollback()
+                finally:
+                    conn.close()
+            except psycopg2.Error as exc:
+                if completed:
+                    raise SourceUnavailable("read_only_control_plane_query_failed") from exc
 
     @staticmethod
     def _text(row, key):
@@ -64,6 +72,7 @@ class ControlPlaneReadModel:
                            WHERE w.agent IS NOT NULL AND w.heartbeat_at > now() - interval '90 seconds'
                              AND w.heartbeat_at <= now()
                              AND w.lease_state = 'ACTIVE'
+                             AND w.lease_expires_at > now()
                        )::integer AS active_agents
                 FROM products p
                 LEFT JOIN workstations w ON w.product = p.product
@@ -178,14 +187,22 @@ class ControlPlaneReadModel:
         with self.connection() as c:
             c.execute("""
                 SELECT workstation_id, product, agent, status, branch,
-                       worktree, current_atomic_task, heartbeat_at, lease_state
+                       worktree, current_atomic_task, heartbeat_at, lease_state, lease_expires_at
                 FROM workstations WHERE agent IS NOT NULL
                 ORDER BY heartbeat_at DESC NULLS LAST LIMIT 250
             """)
             rows = c.fetchall()
         now = datetime.now(UTC)
-        return [
-            {
+        result = []
+        for r in rows:
+            live = bool(
+                r["heartbeat_at"] is not None
+                and 0 <= (now - r["heartbeat_at"]).total_seconds() <= 90
+                and r["lease_state"] == "ACTIVE"
+                and r["lease_expires_at"] is not None
+                and r["lease_expires_at"] > now
+            )
+            result.append({
                 "agent_id": r["agent"],
                 "provider": "control-plane",
                 "agent_type": "WORKSTATION",
@@ -194,21 +211,10 @@ class ControlPlaneReadModel:
                 "task_id": r["current_atomic_task"],
                 "branch": r["branch"],
                 "heartbeat_at": self._text(r, "heartbeat_at"),
-                "state": (
-                    "ACTIVE"
-                    if r["heartbeat_at"] is not None
-                    and 0 <= (now - r["heartbeat_at"]).total_seconds() <= 90
-                    and r["lease_state"] == "ACTIVE"
-                    else "OFFLINE"
-                ),
-                "live": bool(
-                    r["heartbeat_at"]
-                    and 0 <= (now - r["heartbeat_at"]).total_seconds() <= 90
-                    and r["lease_state"] == "ACTIVE"
-                ),
-            }
-            for r in rows
-        ]
+                "state": "ACTIVE" if live else "OFFLINE",
+                "live": live,
+            })
+        return result
 
     def tasks(self, repository: str):
         with self.connection() as c:
@@ -224,34 +230,37 @@ class ControlPlaneReadModel:
                 (repository,),
             )
             rows = c.fetchall()
-        return [
-            {
-                "task_id": r["task_id"],
-                "repository": r["product"],
-                "area": r["section"],
-                "sub_area": r["subsection"],
-                "title": r["title"],
-                "status": r["status"],
-                "owner": r["owner"],
-                "exact_sha": r["exact_sha"],
-                "updated_at": self._text(r, "updated_at"),
-                "completion_percent": 100 if r["status"] == "CERTIFIED" else 0,
-                "execution_ready": r["status"] == "CERTIFIED",
-                "execution_contract": {
-                    "worktree": r["worktree"],
-                    "branch": r["branch"],
-                    "base_sha": r["base_sha"],
-                    "stage": "REVIEW" if r["status"] == "CERTIFIED" else "IMPLEMENTATION",
-                },
-            }
-            for r in rows
-        ]
+        return [self._project_task(r) for r in rows]
+
+    def _project_task(self, r):
+        return {
+            "task_id": r["task_id"],
+            "repository": r["product"],
+            "area": r["section"],
+            "sub_area": r["subsection"],
+            "title": r["title"],
+            "status": r["status"],
+            "owner": r["owner"],
+            "exact_sha": r["exact_sha"],
+            "updated_at": self._text(r, "updated_at"),
+            "completion_percent": 100 if r["status"] == "CERTIFIED" else 0,
+            "execution_ready": r["status"] == "CERTIFIED",
+            "execution_contract": {
+                "worktree": r["worktree"],
+                "branch": r["branch"],
+                "base_sha": r["base_sha"],
+                "stage": "REVIEW" if r["status"] == "CERTIFIED" else "IMPLEMENTATION",
+            },
+        }
 
     def task(self, task_id: str):
         with self.connection() as c:
             c.execute(
                 """
-                SELECT w.product FROM atomic_tasks t
+                SELECT t.task_id, t.workstation_id, t.title, t.status, t.owner,
+                       t.exact_sha, t.updated_at, w.product, w.section,
+                       w.subsection, w.branch, w.worktree, w.base_sha
+                FROM atomic_tasks t
                 JOIN workstations w ON w.workstation_id = t.workstation_id
                 WHERE t.task_id=%s LIMIT 1
             """,
@@ -260,7 +269,7 @@ class ControlPlaneReadModel:
             row = c.fetchone()
         if row is None:
             return None
-        return next((x for x in self.tasks(row["product"]) if x["task_id"] == task_id), None)
+        return self._project_task(row)
 
     def local_work(self, repository: str, recent_hours: int):
         if not 1 <= recent_hours <= 720:

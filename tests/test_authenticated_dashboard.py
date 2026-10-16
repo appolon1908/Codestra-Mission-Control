@@ -227,6 +227,7 @@ def test_future_agent_heartbeat_is_not_active(monkeypatch):
         "agent": "fixture-agent", "product": "Fixture", "workstation_id": "fixture-ws",
         "current_atomic_task": None, "branch": "task/fixture", "heartbeat_at": future,
         "lease_state": "ACTIVE",
+        "lease_expires_at": future + timedelta(minutes=1),
     }
 
     class Cursor:
