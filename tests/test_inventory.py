@@ -500,3 +500,20 @@ def test_registry_targets_distinguish_absent_and_vanished(store: MissionStore, t
     targets = {target.name: target for target in registry_targets(store)}
     assert targets["never"].path is None
     assert targets["vanished"].path == str(tmp_path / "gone")
+
+
+def test_host_scan_accepts_normalized_nanosecond_timestamp_and_unknown_online():
+    now = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
+    report = InventoryScanner(clock=lambda: now).scan(
+        expected_hosts=[ExpectedHost("worker", None)],
+        status_provider=lambda: {
+            "Peer": {"worker": {
+                "HostName": "worker",
+                "LastSeen": "2026-10-14T10:00:00.123456789Z",
+            }},
+        },
+    )
+    worker = by_key(report)[("host", "worker")]
+    assert worker["flags"] == ["host_last_seen_stale", "host_offline"]
+    assert worker["details"]["last_seen"] == "2026-10-14T10:00:00.123456+00:00"
+    assert worker["details"]["last_seen_age_seconds"] == 7199

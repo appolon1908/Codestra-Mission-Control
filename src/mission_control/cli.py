@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import uuid
+from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from .control_sync import (
     utc_now,
 )
 from .controller import MissionController
+from .fabric_api import FabricAPI, FabricRuntime, health_payload, policy_payload
 from .implementation_api import ImplementationAPI
 from .inventory import (
     KINDS,
@@ -41,7 +43,21 @@ from .merge_coordinator import (
     classify_conflicts,
 )
 from .models import AgentRole, ApprovalLevel, Mission, MissionStatus
+from .network_fabric import (
+    DEFAULT_MAX_SNAPSHOT_AGE_SECONDS,
+    DEFAULT_OFFLINE_STALE_AFTER_SECONDS,
+    FabricConfigError,
+    FabricState,
+    evaluate_health,
+    load_inventory_file,
+    load_policy_file,
+    read_status_command,
+    read_status_file,
+    validate_policy,
+)
 from .policy import ApprovalPolicy
+from .repo_sync import SELF_HOSTED_REMOTE, Readiness, RepoSyncError, RepoSyncInspector
+from .repo_sync_api import RepoSyncAPI
 from .scheduler import WorkerSlot
 from .store import CompletionBlocked, MissionStore
 from .watchdog import EscalationPolicy, WatchdogMonitor
@@ -58,6 +74,65 @@ def _store(path: str) -> MissionStore:
     store = MissionStore(Path(path))
     store.initialize()
     return store
+
+
+def _fabric_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--inventory", default="config/tailscale.nodes.json")
+    parser.add_argument(
+        "--status-json",
+        help="read a captured `tailscale status --json` file instead of running the CLI",
+    )
+    parser.add_argument("--tailscale-bin", default="tailscale")
+    parser.add_argument("--max-snapshot-age", type=int, default=DEFAULT_MAX_SNAPSHOT_AGE_SECONDS)
+    parser.add_argument(
+        "--offline-stale-after", type=int, default=DEFAULT_OFFLINE_STALE_AFTER_SECONDS
+    )
+
+
+def _status_reader(args: argparse.Namespace):
+    if args.status_json:
+        return lambda: read_status_file(args.status_json)
+    return lambda: read_status_command(binary=args.tailscale_bin)
+
+
+def _run_fabric_command(args: argparse.Namespace) -> None:
+    if args.command == "fabric-policy-validate":
+        result = validate_policy(load_policy_file(args.policy))
+        print(json.dumps(policy_payload(result), sort_keys=True))
+        raise SystemExit(0 if result.valid else 2)
+
+    inventory = load_inventory_file(args.inventory)
+    if args.command == "fabric-health":
+        report = evaluate_health(
+            inventory,
+            _status_reader(args)(),
+            max_snapshot_age_seconds=args.max_snapshot_age,
+            offline_stale_after_seconds=args.offline_stale_after,
+        )
+        print(json.dumps(health_payload(report), sort_keys=True))
+        raise SystemExit(0 if report.state is FabricState.HEALTHY else 2)
+
+    runtime = FabricRuntime(
+        inventory,
+        load_policy_file(args.policy),
+        _status_reader(args),
+        max_snapshot_age_seconds=args.max_snapshot_age,
+        offline_stale_after_seconds=args.offline_stale_after,
+    )
+    server = FabricAPI(runtime).server(args.host, args.port)
+    host, port = server.server_address[:2]
+    url_host = f"[{host}]" if ":" in host else host
+    print(
+        json.dumps(
+            {"ok": True, "service": "mission-control-fabric-api", "url": f"http://{url_host}:{port}"}
+        )
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
 
 
 def _add_inventory_source_args(parser: argparse.ArgumentParser) -> None:
@@ -111,6 +186,7 @@ def _inventory_runner(store: MissionStore, args: argparse.Namespace, *, persist:
 
     return run
 
+
 def _provider_probes(store: MissionStore, runtime_root: Path, providers: list[str]) -> dict:
     from .adapters.claude import ClaudeAdapter
     from .adapters.codex import CodexAdapter
@@ -126,6 +202,43 @@ def _provider_probes(store: MissionStore, runtime_root: Path, providers: list[st
 
         probes[provider] = probe
     return probes
+
+
+def _run_repo_inspection(args: argparse.Namespace) -> None:
+    inspector = RepoSyncInspector()
+    if args.command == "auth-readiness":
+        auth = inspector.github_auth()
+        print(
+            json.dumps(
+                {
+                    "github": {
+                        "state": auth.state.value,
+                        "detail": auth.detail,
+                        "account": auth.account,
+                    },
+                    "self_hosted_remote": SELF_HOSTED_REMOTE,
+                    "self_hosted_requires_github_auth": False,
+                },
+                sort_keys=True,
+            )
+        )
+        return
+    try:
+        if args.command == "repo-sync-status":
+            report = inspector.report(args.repo, live=args.live)
+            print(json.dumps(report.to_dict(), sort_keys=True))
+            return
+        status = inspector.status(args.repo, live=args.live)
+    except RepoSyncError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
+        raise SystemExit(3) from exc
+    sync = status.remote(args.remote)
+    auth = inspector.github_auth() if sync and sync.kind == "GITHUB" else None
+    decision = inspector.publish_decision(status, args.remote, auth)
+    print(json.dumps(asdict(decision), sort_keys=True))
+    if decision.readiness == Readiness.BLOCKED:
+        raise SystemExit(2)
+    return
 
 
 def main() -> None:
@@ -283,6 +396,33 @@ def main() -> None:
     sub.add_parser("expired")
     sub.add_parser("repositories")
 
+    sync_status = sub.add_parser("repo-sync-status")
+    sync_status.add_argument("--repo", required=True)
+    sync_status.add_argument("--live", action="store_true")
+
+    sub.add_parser("auth-readiness")
+
+    publish = sub.add_parser("publish-readiness")
+    publish.add_argument("--repo", required=True)
+    publish.add_argument("--remote", default=SELF_HOSTED_REMOTE)
+    publish.add_argument("--live", action="store_true")
+
+    sync_api = sub.add_parser("serve-repo-sync-api")
+    sync_api.add_argument("--host", default="127.0.0.1")
+    sync_api.add_argument("--port", type=int, default=8791)
+
+    fabric_health = sub.add_parser("fabric-health")
+    _fabric_arguments(fabric_health)
+
+    fabric_policy = sub.add_parser("fabric-policy-validate")
+    fabric_policy.add_argument("--policy", default="config/tailscale.policy-plan.json")
+
+    fabric_api = sub.add_parser("serve-fabric-api")
+    _fabric_arguments(fabric_api)
+    fabric_api.add_argument("--policy", default="config/tailscale.policy-plan.json")
+    fabric_api.add_argument("--host", default="127.0.0.1")
+    fabric_api.add_argument("--port", type=int, default=8791)
+
     inventory_scan = sub.add_parser("inventory-scan")
     _add_inventory_source_args(inventory_scan)
     inventory_scan.add_argument("--no-persist", action="store_true")
@@ -366,6 +506,16 @@ def main() -> None:
     node_api.add_argument("--port", type=int, default=8791)
 
     args = parser.parse_args()
+    if args.command in {"repo-sync-status", "publish-readiness", "auth-readiness"}:
+        _run_repo_inspection(args)
+        return
+    if args.command in {"fabric-health", "fabric-policy-validate", "serve-fabric-api"}:
+        try:
+            _run_fabric_command(args)
+        except FabricConfigError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
+            raise SystemExit(2) from None
+        return
     store = _store(args.db)
 
     if args.command == "init":
@@ -832,6 +982,24 @@ def main() -> None:
                 sort_keys=True,
             )
         )
+        return
+
+    if args.command == "serve-repo-sync-api":
+        server = RepoSyncAPI(store, RepoSyncInspector()).server(args.host, args.port)
+        host, port = server.server_address[:2]
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "service": "mission-control-repo-sync-api",
+                    "host": host,
+                    "port": port,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        server.serve_forever()
         return
 
     if args.command == "inventory-scan":
