@@ -118,9 +118,10 @@ def _run_fabric_command(args: argparse.Namespace) -> None:
     )
     server = FabricAPI(runtime).server(args.host, args.port)
     host, port = server.server_address[:2]
+    url_host = f"[{host}]" if ":" in host else host
     print(
         json.dumps(
-            {"ok": True, "service": "mission-control-fabric-api", "url": f"http://{host}:{port}"}
+            {"ok": True, "service": "mission-control-fabric-api", "url": f"http://{url_host}:{port}"}
         )
     )
     try:
