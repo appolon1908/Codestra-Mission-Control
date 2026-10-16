@@ -99,6 +99,8 @@ def controller_gate_blockers(
             or not isinstance(expires, datetime) or expires.utcoffset() is None
         ):
             return denied("CONTROLLER_OBSERVATION_INVALID")
+        # Bound elapsed time, not local wall time across a daylight-saving change.
+        observed, expires = observed.astimezone(UTC), expires.astimezone(UTC)
         if not observed <= now < expires <= observed + timedelta(minutes=5):
             return denied("CONTROLLER_OBSERVATION_STALE")
     except (TypeError, ValueError, OverflowError):

@@ -3,10 +3,12 @@
 import json
 from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from conftest import FixtureController, clean_snapshot, prepare_merge
 
+from mission_control import governed_gates
 from mission_control.lease import LeaseManager
 from mission_control.merge_coordinator import PullRequestSnapshot
 from mission_control.models import Mission, MissionStatus
@@ -219,6 +221,26 @@ def test_current_mission_branch_changes_revoke_authorization(tmp_path, during_ve
     result = store.merge_authorization("GATES-1")
     assert result["authorized"] is False
     assert "MERGE_DECISION_BRANCH_CHANGED" in result["reasons"]
+
+
+def test_dst_fallback_cannot_extend_controller_evidence_lifetime(tmp_path, monkeypatch):
+    store, coordinator = ready_store(tmp_path)
+
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 1, 6, 30, tzinfo=UTC).astimezone(tz)
+
+    zone = ZoneInfo("America/New_York")
+    observed = FixedClock(2026, 11, 1, 1, 59, tzinfo=zone, fold=0)  # 05:59 UTC
+    expires = FixedClock(2026, 11, 1, 2, 4, tzinfo=zone)  # 07:04 UTC: 65 minutes later
+    monkeypatch.setattr(governed_gates, "datetime", FixedClock)
+    store.controller_gate_provider = ObservationProvider(
+        lambda obs: replace(obs, observed_at=observed, expires_at=expires)
+    )
+    decision = coordinator.evaluate("GATES-1", clean_snapshot())
+    assert decision.merge_allowed is False
+    assert "CONTROLLER_OBSERVATION_STALE" in decision.reasons
 
 
 def test_author_json_cannot_supply_routing_or_controller_authority(tmp_path):
