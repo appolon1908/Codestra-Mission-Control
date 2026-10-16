@@ -120,7 +120,11 @@ Worktree flags: `dirty`, `untracked`, `conflicted`, `ahead`, `behind`, `diverged
     python -m mission_control.cli --db .runtime/mission-control.db inventory-drift --status ERROR
     python -m mission_control.cli --db .runtime/mission-control.db serve-inventory-api --nodes-config config/tailscale.nodes.json --tailscale-live
 
-API (binds 127.0.0.1:8791 by default):
+API (binds 127.0.0.1:8791 by default). `--host` accepts literal loopback
+(`127.0.0.0/8`, `::1`) or Tailscale addresses (`100.64.0.0/10`,
+`fd7a:115c:a1e0::/48`); `localhost` is normalized to `127.0.0.1`.
+IPv6 uses an IPv6 listener. Wildcard, public, LAN, IPv4-mapped IPv6 and
+arbitrary DNS addresses are rejected before a socket is opened:
 
 - `GET  /health`
 - `POST /platform/v1/inventory/drift/scans` — run and persist a scan (201; 409 while a scan runs)
